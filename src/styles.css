@@ -2218,6 +2218,16 @@ button.row:active,
   border-radius: 50%;
 }
 
+/* a loaded logo or a face stands on its own: no shading ring around it */
+.pic.logo,
+.pic.person {
+  box-shadow: none;
+}
+
+.pic.person {
+  overflow: visible;
+}
+
 /* ---------- Kalyta 2.1 ---------- */
 
 .bud-total {
@@ -2956,13 +2966,12 @@ html.covered .app-cover {
 .bank-opt .ring {
   position: relative;
   border-radius: 50%;
-  padding: 3px;
-  box-shadow: 0 0 0 2px transparent;
-  transition: box-shadow 0.2s;
+  transition: transform 0.2s var(--ease);
 }
 
+/* picked: a little bigger with a tick, no frame around the round logo */
 .bank-opt[aria-pressed="true"] .ring {
-  box-shadow: 0 0 0 2px var(--text);
+  transform: scale(1.08);
 }
 
 .bank-opt .tick {

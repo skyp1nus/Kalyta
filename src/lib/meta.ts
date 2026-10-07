@@ -155,7 +155,7 @@ export function accountDomain(name: string, domain?: string): string {
 //    The client ID is public by design; Brandfetch only serves it to pages that embed the logos.
 // 2. Banks in BANKS ship their App Store icon (256 px, public/logos, made by scripts/fetch-logos.mjs).
 // 3. Any other website: its own large icon through Google's icon service.
-export const BRANDFETCH_ID = '';
+export const BRANDFETCH_ID = '1id8eyWTAu83fmiC8M5';
 const LOCAL_LOGOS = new Set(BANKS.map((b) => b.domain));
 
 export function logoUrls(domain: string): string[] {

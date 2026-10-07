@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fmt } from '../src/lib/format';
-import { accountDomain, logoUrl } from '../src/lib/meta';
+import { accountDomain, logoUrls } from '../src/lib/meta';
 import { buildView } from '../src/lib/outbox';
 import { kwOf, norm, ruleFor } from '../src/lib/rules';
 import {
@@ -262,9 +262,11 @@ describe('accounts from the app', () => {
     expect(accountDomain('Anything', 'example.com')).toBe('example.com');
   });
 
-  it('uses the bundled App Store icon for known banks', () => {
-    expect(logoUrl('monobank.ua')).toBe('./logos/monobank.ua.jpg');
-    expect(logoUrl('example.com')).toContain('gstatic.com');
-    expect(logoUrl('')).toBe('');
+  it('tries Brandfetch first, then the bundled App Store icon or the site icon', () => {
+    const mono = logoUrls('monobank.ua');
+    expect(mono[0]).toContain('cdn.brandfetch.io/domain/monobank.ua/');
+    expect(mono[1]).toBe('./logos/monobank.ua.jpg');
+    expect(logoUrls('example.com')[1]).toContain('gstatic.com');
+    expect(logoUrls('')).toEqual([]);
   });
 });

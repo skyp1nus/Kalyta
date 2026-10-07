@@ -85,22 +85,27 @@ export function Avatar({
   const n = fail.key === key ? fail.n : 0;
   const logo = urls[n] ?? '';
   const next = () => setFail({ key, n: n + 1 });
+  // once a logo has loaded it is the whole avatar: no coloured circle, letter or shading behind it,
+  // so no ring shows around round logos
+  const [shown, setShown] = useState('');
   const box: CSSProperties = { width: size, height: size, fontSize: Math.round(size * 0.43) };
   if (isPerson(type)) {
+    // the blobatar is the picture itself, with no circle around it
     return (
-      <span
-        className={`${className} pic`}
-        aria-hidden="true"
-        style={{ ...box, background: 'rgba(142,142,147,.18)' }}
-      >
+      <span className={`${className} pic person`} aria-hidden="true" style={box}>
         <Face name={name} type={type} size={size} />
       </span>
     );
   }
   const showLogo = !!logo && !look.icon;
+  const loaded = showLogo && shown === logo;
   return (
-    <span className={`${className} pic`} aria-hidden="true" style={{ ...box, background: look.color }}>
-      {look.icon ? <Icon name={look.icon} size={Math.round(size * 0.55)} /> : look.letter}
+    <span
+      className={`${className} pic ${loaded ? 'logo' : ''}`}
+      aria-hidden="true"
+      style={{ ...box, background: loaded ? 'transparent' : look.color }}
+    >
+      {loaded ? null : look.icon ? <Icon name={look.icon} size={Math.round(size * 0.55)} /> : look.letter}
       {showLogo && (
         <img
           src={logo}
@@ -110,7 +115,7 @@ export function Avatar({
           draggable={false}
           onError={next}
           // a tiny favicon blown up looks worse than the letter
-          onLoad={(e) => e.currentTarget.naturalWidth < 48 && next()}
+          onLoad={(e) => (e.currentTarget.naturalWidth < 48 ? next() : setShown(logo))}
         />
       )}
     </span>

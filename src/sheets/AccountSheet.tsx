@@ -203,7 +203,7 @@ export function AccountSheet({ view, type: startType }: { view: View; type?: Acc
             ))}
           </div>
           <div className="sheet-note">
-            Logos come from each bank’s website. Saved to the Accounts tab of your Sheet.
+            Logos by Brandfetch. Saved to the Accounts tab of your Sheet.
           </div>
         </>
       )}
