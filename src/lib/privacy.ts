@@ -143,8 +143,10 @@ export async function faceIdAvailable(): Promise<boolean> {
   }
 }
 
+// Called straight from the tap: Safari only shows the passkey prompt while the tap is still
+// "fresh", so nothing may be awaited before credentials.create (availability is checked earlier).
 export async function enrollFaceId(): Promise<'ok' | 'cancelled' | 'unavailable'> {
-  if (!(await faceIdAvailable())) return 'unavailable';
+  if (typeof PublicKeyCredential === 'undefined') return 'unavailable';
   try {
     const cred = (await navigator.credentials.create({
       publicKey: {

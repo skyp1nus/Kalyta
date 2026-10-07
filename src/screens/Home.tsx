@@ -384,19 +384,16 @@ function HomeSkeleton() {
 }
 
 // Grey glow behind Home: base gradient plus three slowly drifting blobs (CSS animations on transform/opacity).
-// It scrolls natively with the content (no JS on scroll, so it never trails behind); a band of the
-// same glow sits above it, so pulling down never reveals an empty strip.
+// It scrolls natively with the content (no JS on scroll, so it never trails behind). Pulling down shows
+// the scroll area's own pinned background, which is the glow's top colour (see .home-scroll).
 const HomeBackdrop = memo(function HomeBackdrop() {
   return (
-    <>
-      <div className="home-bg-up" aria-hidden="true" />
-      <div className="home-bg" aria-hidden="true">
-        <div className="home-bg-base" />
-        <div className="blob blob-a" />
-        <div className="blob blob-b" />
-        <div className="blob blob-c" />
-      </div>
-    </>
+    <div className="home-bg" aria-hidden="true">
+      <div className="home-bg-base" />
+      <div className="blob blob-a" />
+      <div className="blob blob-b" />
+      <div className="blob blob-c" />
+    </div>
   );
 });
 
@@ -413,30 +410,32 @@ export const Home = memo(function Home({ view }: { view: View | null }) {
 
   return (
     <>
-      <div className="scroll">
-        <HomeBackdrop />
-        <div className="page home">
-          {view ? (
-            <HomeBody view={view} order={order} />
-          ) : (
-            <>
-              <HomeSkeleton />
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginTop: 18,
-                  fontSize: 14,
-                  color: 'var(--text2)',
-                }}
-              >
-                <Icon name="progress_activity" size={18} className="spin" />
-                Loading from Google Sheet…
-              </div>
-            </>
-          )}
+      <div className="scroll home-scroll">
+        <div className="home-content">
+          <HomeBackdrop />
+          <div className="page home">
+            {view ? (
+              <HomeBody view={view} order={order} />
+            ) : (
+              <>
+                <HomeSkeleton />
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 18,
+                    fontSize: 14,
+                    color: 'var(--text2)',
+                  }}
+                >
+                  <Icon name="progress_activity" size={18} className="spin" />
+                  Loading from Google Sheet…
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

@@ -65,12 +65,24 @@
 }
 
 :root {
+  /* Full screen height. iOS 26 Home Screen apps size the window one status bar short, so
+     100% / inset: 0 / dvh stop ~50pt above the bottom and leave a black strip; only lvh
+     reaches the bottom edge there. Elsewhere 100% is the same thing. */
+  --app-h: 100%;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --st: max(env(safe-area-inset-top), 20px);
   --sb: env(safe-area-inset-bottom);
   --bar-top: calc(var(--st) + 1px);
   --content-top: calc(var(--st) + 57px);
   --bottom: max(30px, calc(var(--sb) - 4px));
+}
+
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    :root {
+      --app-h: 100lvh;
+    }
+  }
 }
 
 * {
@@ -80,7 +92,7 @@
 html,
 body {
   margin: 0;
-  height: 100%;
+  height: var(--app-h);
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--bg);
@@ -206,7 +218,10 @@ input[type="search"]::-webkit-search-decoration {
 
 .app {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   overflow: hidden;
   background: var(--bg);
 }
@@ -325,16 +340,18 @@ input[type="search"]::-webkit-search-decoration {
   contain: strict;
 }
 
-/* the glow continues above the top edge for the pull-down bounce */
-.home-bg-up {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -600px;
-  height: 600px;
-  background: var(--glow);
-  opacity: 0.6;
-  pointer-events: none;
+/* Home scrolls natively. The scroll area's background stays put while the content moves, so the
+   pull-down bounce shows its top half: the colour at the top edge of the glow (glow at ~60% over
+   the background). The bottom half matches the page for the bounce at the end of the list. */
+.home-scroll {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--glow) 60%, var(--bg)) 50%, var(--bg) 50%);
+}
+
+/* opaque content, so the pinned background only shows in the bounce */
+.home-content {
+  position: relative;
+  min-height: 100%;
+  background: var(--bg);
 }
 
 .home-bg-base {
@@ -1484,7 +1501,10 @@ button.row:active,
 
 .scrim {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   z-index: 50;
   background: var(--scrim);
   opacity: 0;
@@ -1502,7 +1522,7 @@ button.row:active,
   left: 0;
   right: 0;
   top: calc(var(--st) + 7px);
-  bottom: 0;
+  height: calc(var(--app-h) - var(--st) - 7px);
   z-index: 51;
   border-radius: 40px 40px 0 0;
   background: var(--sheet);
@@ -2139,7 +2159,10 @@ button.row:active,
 
 .onboarding {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   z-index: 80;
   background: var(--bg);
   display: flex;
@@ -2750,7 +2773,10 @@ button.row:active,
 
 .lock-screen {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   z-index: 90;
   background: var(--bg);
   display: flex;
@@ -2777,7 +2803,10 @@ button.row:active,
 
 .face-scan {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--bg) 35%, transparent);
@@ -2821,7 +2850,10 @@ button.row:active,
 
 .app-cover {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   z-index: 96;
   display: flex;
   flex-direction: column;
@@ -2847,7 +2879,10 @@ html.covered .app-cover {
 
 .reloading {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
   z-index: 97;
   background: var(--bg);
   display: flex;
