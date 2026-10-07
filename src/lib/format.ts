@@ -65,12 +65,47 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((b - a) / 864e5);
 }
 
+// "Today", "Yesterday", "Mon, Oct 5"
 export function dayHeading(date: string, today: string): string {
   const d = daysBetween(date.slice(0, 10), today);
   if (d === 0) return 'Today';
   if (d === 1) return 'Yesterday';
   const wd = new Date(Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10))).getUTCDay();
-  return `${WEEKDAYS[wd]}, ${shortDay(date)}`;
+  const y = date.slice(0, 4) === today.slice(0, 4) ? '' : `, ${date.slice(0, 4)}`;
+  return `${WEEKDAYS[wd]}, ${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}${y}`;
+}
+
+// "Today", "Yesterday", "Oct 5"
+export function shortDate(date: string, today: string): string {
+  if (!date) return 'never';
+  const d = daysBetween(date.slice(0, 10), today);
+  if (d === 0) return 'today';
+  if (d === 1) return 'yesterday';
+  const y = date.slice(0, 4) === today.slice(0, 4) ? '' : `, ${date.slice(0, 4)}`;
+  return `${SHORT_MONTHS[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}${y}`;
+}
+
+const PREFIX: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
+const SUFFIX: Record<string, string> = { PLN: 'zł', UAH: '₴' };
+export const CURRENCY_SIGN: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  PLN: 'zł',
+  UAH: '₴',
+  USDT: '₮',
+};
+
+// "$656", "23.40 zł", "− 1,289 ₴". Cents only when there are any (and the user wants them).
+export function fmt(v: number, currency: string, sign: '' | '+' | '−' = '', cents = true): string {
+  if (!Number.isFinite(v)) return '–';
+  const abs = Math.abs(v);
+  const d = cents && Math.round(abs * 100) % 100 !== 0 ? 2 : 0;
+  const n = abs.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const p = sign ? `${sign} ` : '';
+  const pre = PREFIX[currency];
+  if (pre) return `${p}${pre}${n}`;
+  return `${p}${n} ${SUFFIX[currency] ?? currency}`;
 }
 
 export function age(updated: string, today: string): string {

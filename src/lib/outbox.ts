@@ -1,5 +1,15 @@
 import { parseAmount } from './format';
-import type { Account, Op, ServerData, Transfer, Tx, TxInput, View } from './types';
+import type {
+  Account,
+  Adjustment,
+  Op,
+  ServerData,
+  Transfer,
+  TransferInput,
+  Tx,
+  TxInput,
+  View,
+} from './types';
 
 const STABLE = new Set(['USD', 'USDT', 'USDC']);
 
@@ -16,6 +26,68 @@ export function toTx(r: ServerData['tx'][number]): Tx {
 export function toTransfer(r: ServerData['transfers'][number]): Transfer {
   const [id, date, from, sent, fromCurrency, to, received, toCurrency, note] = r;
   return { id, date, from, sent, fromCurrency, to, received, toCurrency, note };
+}
+
+function toAdjustment(r: NonNullable<ServerData['adjustments']>[number]): Adjustment {
+  const [id, date, account, change, currency] = r;
+  return { id, date, account, change, currency };
+}
+
+function transferFromInput(tr: TransferInput): Transfer {
+  return {
+    id: tr.id,
+    date: tr.date,
+    from: tr.from,
+    sent: parseAmount(tr.sent),
+    fromCurrency: tr.fromCurrency,
+    to: tr.to,
+    received: parseAmount(tr.received),
+    toCurrency: tr.toCurrency,
+    note: tr.note,
+    pending: true,
+  };
+}
+
+// Applies (dir 1) or takes back (dir -1) a transfer's effect on both balances
+function moveTransfer(view: View, t: Transfer, dir: 1 | -1) {
+  moveBalance(
+    view.accounts,
+    t.from,
+    -dir * t.sent,
+    t.fromCurrency,
+    usdRate(t.fromCurrency, view.tx, view.accounts),
+  );
+  moveBalance(
+    view.accounts,
+    t.to,
+    dir * t.received,
+    t.toCurrency,
+    usdRate(t.toCurrency, view.tx, view.accounts),
+  );
+}
+
+// USD per unit for every currency we can price: the server's rates first, then guesses from the data
+function knownRates(server: ServerData, tx: Tx[], accounts: Account[]): Record<string, number> {
+  const rates: Record<string, number> = { USD: 1, USDT: 1, USDC: 1, ...(server.rates ?? {}) };
+  const seen = new Set([
+    ...tx.map((t) => t.currency),
+    ...accounts.map((a) => a.currency),
+    'PLN',
+    'EUR',
+    'UAH',
+  ]);
+  for (const c of seen) {
+    if (!c || rates[c]) continue;
+    const r = usdRate(c, tx, accounts);
+    if (r) rates[c] = r;
+  }
+  return rates;
+}
+
+function stamp(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 // Best guess of USD per unit of a currency, from what the server already converted
@@ -64,10 +136,16 @@ function moveBalance(
 // Server data plus everything still waiting in the outbox, so the UI shows edits instantly
 export function buildView(server: ServerData | null, outbox: Op[]): View | null {
   if (!server) return null;
+  const tx = server.tx.map(toTx);
+  const accounts = server.accounts.map((a) => ({ ...a }));
   const view: View = {
-    tx: server.tx.map(toTx),
+    tx,
     transfers: server.transfers.map(toTransfer),
-    accounts: server.accounts.map((a) => ({ ...a })),
+    accounts,
+    adjustments: (server.adjustments ?? []).map(toAdjustment),
+    rates: knownRates(server, tx, accounts),
+    fetchedAt: server.fetchedAt,
+    sheetName: server.sheetName ?? '',
     categories: server.categories,
     colors: server.colors,
     income: server.income,
@@ -96,53 +174,52 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
         break;
       case 'transfer': {
         if (view.transfers.some((t) => t.id === op.tr.id)) break;
-        const sent = parseAmount(op.tr.sent);
-        const received = parseAmount(op.tr.received);
-        view.transfers.push({
-          id: op.tr.id,
-          date: op.tr.date,
-          from: op.tr.from,
-          sent,
-          fromCurrency: op.tr.fromCurrency,
-          to: op.tr.to,
-          received,
-          toCurrency: op.tr.toCurrency,
-          note: op.tr.note,
-          pending: true,
-          failed,
-        });
-        if (!failed) {
-          moveBalance(
-            view.accounts,
-            op.tr.from,
-            -sent,
-            op.tr.fromCurrency,
-            usdRate(op.tr.fromCurrency, view.tx, view.accounts),
-          );
-          moveBalance(
-            view.accounts,
-            op.tr.to,
-            received,
-            op.tr.toCurrency,
-            usdRate(op.tr.toCurrency, view.tx, view.accounts),
-          );
-        }
+        const t = { ...transferFromInput(op.tr), failed };
+        view.transfers.push(t);
+        if (!failed) moveTransfer(view, t, 1);
+        break;
+      }
+      case 'updateTransfer': {
+        const i = view.transfers.findIndex((t) => t.id === op.id);
+        if (i < 0 || failed) break;
+        const old = view.transfers[i];
+        if (!old.failed) moveTransfer(view, old, -1);
+        const t = { ...transferFromInput(op.tr), id: op.id };
+        view.transfers[i] = t;
+        moveTransfer(view, t, 1);
         break;
       }
       case 'deleteTransfer': {
         const tr = view.transfers.find((t) => t.id === op.id);
         view.transfers = view.transfers.filter((t) => t.id !== op.id);
-        if (tr && !tr.pending) {
-          moveBalance(view.accounts, tr.from, tr.sent, tr.fromCurrency, null);
-          moveBalance(view.accounts, tr.to, -tr.received, tr.toCurrency, null);
-        }
+        if (tr && !tr.failed && !failed) moveTransfer(view, tr, -1);
         break;
       }
+      case 'deleteAdjustment': {
+        const adj = view.adjustments.find((a) => a.id === op.id);
+        view.adjustments = view.adjustments.filter((a) => a.id !== op.id);
+        if (adj && !adj.failed && !failed)
+          moveBalance(view.accounts, adj.account, -adj.change, adj.currency, null);
+        break;
+      }
+      case 'repair':
+        break;
       case 'balance': {
         const i = view.accounts.findIndex((a) => a.name.toLowerCase() === op.account.toLowerCase());
         if (i >= 0 && !failed) {
           const a = view.accounts[i];
           const balance = parseAmount(op.balance);
+          const change = Math.round((balance - a.balance) * 100) / 100;
+          if (op.mode === 'adjust' && change && !view.adjustments.some((x) => x.id === op.id)) {
+            view.adjustments.push({
+              id: op.id ?? op.opId,
+              date: stamp(op.createdAt),
+              account: a.name,
+              change,
+              currency: a.currency,
+              pending: true,
+            });
+          }
           const rate =
             a.balance !== 0 && a.usd != null
               ? a.usd / a.balance
@@ -152,6 +229,7 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
             balance,
             usd: rate == null ? a.usd : Math.round(balance * rate * 100) / 100,
             updated: view.today,
+            checked: view.today,
           };
         }
         break;
@@ -161,6 +239,7 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
 
   view.tx.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   view.transfers.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  view.adjustments.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return view;
 }
 

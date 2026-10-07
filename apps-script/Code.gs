@@ -6,8 +6,10 @@ const SECRET = 'REPLACE_WITH_A_LONG_RANDOM_STRING';      // shortcuts send this 
 const VIEW_KEY = 'REPLACE_WITH_ANOTHER_RANDOM_STRING';   // app + web dashboard key: <web app URL>?key=VIEW_KEY
 const SHEET_NAME = 'Expenses';
 const RULES_SHEET = 'Rules';           // optional: A = Keyword, B = Category
-const ACCOUNTS_SHEET = 'Accounts';     // A Account | B Type | C Currency | D Balance | E Updated | F USD
+const ACCOUNTS_SHEET = 'Accounts';     // A Account | B Type | C Currency | D Balance | E Updated | F USD | G Checked
 const HISTORY_SHEET = 'Balance history';
+// Kind: check = balance entered by hand, adjust = correction logged as "Balance adjustment", move = transfer
+const HISTORY_HEADERS = ['Date', 'Account', 'Balance', 'Currency', 'Change', 'Kind', 'ID'];
 const OVERVIEW_SHEET = 'Overview';
 const DETAILS_SHEET = 'Details';
 const OLD_DASHBOARD_SHEET = 'Dashboard';
@@ -101,8 +103,11 @@ function doGet(e) {
 //   update   { id, tx: {...same fields} }
 //   delete   { id }
 //   transfer { tr: {id, date, from, sent, fromCurrency, to, received, toCurrency, note} }
+//   updateTransfer { id, tr: {...same fields} }
 //   deleteTransfer { id }
-//   balance  { account, balance }
+//   balance  { account, balance, mode?: 'adjust' | 'check', id? }   adjust = logged as a balance adjustment
+//   deleteAdjustment { id }   undoes an adjustment: moves the balance back
+//   repair   recreates missing tabs and headers
 
 const TRANSFERS_SHEET = 'Transfers';
 const TRANSFER_HEADERS = ['Date', 'From', 'Sent', 'Currency', 'To', 'Received', 'Currency', 'Sent USD', 'Received USD', 'Rate', 'Note', 'ID'];
@@ -124,10 +129,16 @@ function handleApi(body) {
     else if (action === 'update') id = apiUpdate(clean(body.id), body.tx || {});
     else if (action === 'delete') id = apiDelete(clean(body.id));
     else if (action === 'transfer') id = apiTransfer(body.tr || {});
+    else if (action === 'updateTransfer') id = apiUpdateTransfer(clean(body.id), body.tr || {});
     else if (action === 'deleteTransfer') id = apiDeleteTransfer(clean(body.id));
+    else if (action === 'deleteAdjustment') id = apiDeleteAdjustment(clean(body.id));
+    else if (action === 'repair') repairTabs();
     else if (action === 'balance') {
       if (!clean(body.account)) throw new Error('Pick an account');
-      updateBalance(clean(body.account), String(body.balance), '');
+      id = clean(body.id) || newId();
+      if (findRowById(getHistorySheet(), 7, id) < 0) {
+        updateBalance(clean(body.account), String(body.balance), '', clean(body.mode) === 'adjust' ? 'adjust' : 'check', id);
+      }
     } else throw new Error('Unknown action: ' + action);
   } finally {
     lock.releaseLock();
@@ -228,10 +239,7 @@ function usdFormula(amountCell, curCell, dateCell) {
     'GOOGLEFINANCE("CURRENCY:"&' + curCell + '&"USD"))))';
 }
 
-function apiTransfer(tr) {
-  const sh = getTransfersSheet();
-  const id = clean(tr.id) || newId();
-  if (findRowById(sh, 12, id) > 0) return id;
+function transferFields(tr) {
   const from = clean(tr.from), to = clean(tr.to);
   if (!from || !to) throw new Error('Pick both accounts');
   if (from.toLowerCase() === to.toLowerCase()) throw new Error('Pick two different accounts');
@@ -240,18 +248,43 @@ function apiTransfer(tr) {
   if (!(sent > 0) || !(received > 0)) throw new Error('Enter both amounts');
   const fromCur = clean(tr.fromCurrency).toUpperCase() || accountCurrency(from) || LOCAL_CURRENCY;
   const toCur = clean(tr.toCurrency).toUpperCase() || accountCurrency(to) || fromCur;
-  const date = parseAppDate(tr.date);
+  return { date: parseAppDate(tr.date), from: from, sent: sent, fromCur: fromCur, to: to, received: received, toCur: toCur, note: clean(tr.note) };
+}
 
-  const row = Math.max(sh.getLastRow(), 1) + 1;
-  sh.getRange(row, 1, 1, 7).setValues([[date, from, sent, fromCur, to, received, toCur]]);
+function writeTransfer(sh, row, f, id) {
+  sh.getRange(row, 1, 1, 7).setValues([[f.date, f.from, f.sent, f.fromCur, f.to, f.received, f.toCur]]);
   sh.getRange(row, 8).setFormula(usdFormula('C' + row, 'D' + row, 'A' + row));
   sh.getRange(row, 9).setFormula(usdFormula('F' + row, 'G' + row, 'A' + row));
   sh.getRange(row, 10).setFormula('=IF(OR(C' + row + '="", F' + row + '=""), "", ROUND(C' + row + '/F' + row + ', 4))');
-  sh.getRange(row, 11, 1, 2).setValues([[clean(tr.note), id]]);
+  sh.getRange(row, 11, 1, 2).setValues([[f.note, id]]);
   sh.getRange(row, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  adjustBalance(f.from, -f.sent, f.fromCur);
+  adjustBalance(f.to, f.received, f.toCur);
+}
 
-  adjustBalance(from, -sent, fromCur);
-  adjustBalance(to, received, toCur);
+// Moves both balances back as if the transfer in this row never happened
+function reverseTransfer(sh, row) {
+  const r = sh.getRange(row, 1, 1, 7).getValues()[0];
+  adjustBalance(clean(r[1]), Number(r[2]) || 0, clean(r[3]));
+  adjustBalance(clean(r[4]), -(Number(r[5]) || 0), clean(r[6]));
+}
+
+function apiTransfer(tr) {
+  const sh = getTransfersSheet();
+  const id = clean(tr.id) || newId();
+  if (findRowById(sh, 12, id) > 0) return id;
+  const f = transferFields(tr);
+  writeTransfer(sh, Math.max(sh.getLastRow(), 1) + 1, f, id);
+  return id;
+}
+
+function apiUpdateTransfer(id, tr) {
+  const sh = getTransfersSheet();
+  const row = findRowById(sh, 12, id);
+  if (row < 0) throw new Error('Transfer not found');
+  const f = transferFields(tr);
+  reverseTransfer(sh, row);
+  writeTransfer(sh, row, f, id);
   return id;
 }
 
@@ -259,11 +292,28 @@ function apiDeleteTransfer(id) {
   const sh = getTransfersSheet();
   const row = findRowById(sh, 12, id);
   if (row < 0) return id;
-  const r = sh.getRange(row, 1, 1, 7).getValues()[0];
-  adjustBalance(clean(r[1]), Number(r[2]) || 0, clean(r[3]));
-  adjustBalance(clean(r[4]), -(Number(r[5]) || 0), clean(r[6]));
+  reverseTransfer(sh, row);
   sh.deleteRow(row);
   return id;
+}
+
+// Balance adjustments live in Balance history (Kind = adjust); deleting one moves the balance back
+function apiDeleteAdjustment(id) {
+  const sh = getHistorySheet();
+  const row = findRowById(sh, 7, id);
+  if (row < 0) return id;
+  const r = sh.getRange(row, 1, 1, 7).getValues()[0];
+  if (clean(r[5]) !== 'adjust') throw new Error('Not a balance adjustment');
+  adjustBalance(clean(r[1]), -(Number(r[4]) || 0), clean(r[3]));
+  sh.deleteRow(row);
+  return id;
+}
+
+function repairTabs() {
+  getSheet();
+  getTransfersSheet();
+  getAccountsSheet();
+  getHistorySheet();
 }
 
 function sameCurrency(a, b) {
@@ -299,7 +349,7 @@ function adjustBalance(name, delta, currency) {
   const next = Math.round((balance + delta) * 100) / 100;
   const now = new Date();
   sh.getRange(row, 4, 1, 2).setValues([[next, now]]);
-  getHistorySheet().appendRow([now, clean(sh.getRange(row, 1).getValue()), next, cur]);
+  getHistorySheet().appendRow([now, clean(sh.getRange(row, 1).getValue()), next, cur, Math.round(delta * 100) / 100, 'move', newId()]);
 }
 
 // ----- data for the app -----
@@ -352,21 +402,33 @@ function getApiData() {
   }
 
   const acc = ss.getSheetByName(ACCOUNTS_SHEET);
-  const accounts = !acc || acc.getLastRow() < 2 ? [] : acc.getRange(2, 1, acc.getLastRow() - 1, 6).getValues()
+  const day = d => (d instanceof Date ? Utilities.formatDate(d, tz, 'yyyy-MM-dd') : clean(d));
+  const accounts = !acc || acc.getLastRow() < 2 ? [] : acc.getRange(2, 1, acc.getLastRow() - 1, 7).getValues()
     .filter(r => clean(r[0]))
     .map(r => ({
       name: clean(r[0]),
       type: clean(r[1]) || 'Account',
       currency: clean(r[2]).toUpperCase(),
       balance: Number(r[3]) || 0,
-      updated: r[4] instanceof Date ? Utilities.formatDate(r[4], tz, 'yyyy-MM-dd') : clean(r[4]),
+      updated: day(r[4]),
+      checked: day(r[6]) || day(r[4]),
       usd: typeof r[5] === 'number' ? Math.round(r[5] * 100) / 100 : null,
     }));
+
+  // [id, date, account, change, currency]
+  const hist = ss.getSheetByName(HISTORY_SHEET);
+  const adjustments = !hist || hist.getLastRow() < 2 || hist.getLastColumn() < 7 ? [] :
+    hist.getRange(2, 1, hist.getLastRow() - 1, 7).getValues()
+      .filter(r => r[0] instanceof Date && clean(r[5]) === 'adjust' && clean(r[6]))
+      .map(r => [clean(r[6]), fmt(r[0]), clean(r[1]), Number(r[4]) || 0, clean(r[3])]);
 
   return {
     tx: tx,
     transfers: transfers,
     accounts: accounts,
+    adjustments: adjustments,
+    rates: currentRates(),
+    sheetName: ss.getName(),
     categories: CATEGORIES,
     colors: CATEGORY_COLORS,
     income: INCOME,
@@ -514,7 +576,7 @@ function getSheet() {
 // ---------- Accounts ----------
 
 // Balance update from the "Update balance" shortcut: { type: 'balance', account, balance, currency? }
-function updateBalance(name, rawBalance, currency) {
+function updateBalance(name, rawBalance, currency, kind, id) {
   if (!name) throw new Error('account is required');
   const parsed = parseAmount(rawBalance);
   if (parsed.amount === '') throw new Error('balance is not a number');
@@ -530,8 +592,26 @@ function updateBalance(name, rawBalance, currency) {
     sh.getRange(row, 6).setFormula(accountUsdFormula(row));
   }
   const now = new Date();
+  const before = Number(sh.getRange(row, 4).getValue()) || 0;
   sh.getRange(row, 4, 1, 2).setValues([[parsed.amount, now]]);
-  getHistorySheet().appendRow([now, clean(sh.getRange(row, 1).getValue()), parsed.amount, clean(sh.getRange(row, 3).getValue())]);
+  sh.getRange(row, 7).setValue(now);
+  const change = Math.round((parsed.amount - before) * 100) / 100;
+  getHistorySheet().appendRow([now, clean(sh.getRange(row, 1).getValue()), parsed.amount, clean(sh.getRange(row, 3).getValue()),
+    change, change && kind === 'adjust' ? 'adjust' : 'check', id || newId()]);
+}
+
+// USD per unit for the currencies the app converts between, today
+function currentRates() {
+  const rates = { USD: 1, USDT: 1, USDC: 1 };
+  const now = new Date();
+  const plnPerUsd = nbpRate('USD', now);
+  if (!plnPerUsd) return rates;
+  rates.PLN = Math.round(1 / plnPerUsd * 1e6) / 1e6;
+  ['EUR', 'UAH', 'GBP'].forEach(code => {
+    const pln = nbpRate(code, now);
+    if (pln) rates[code] = Math.round(pln / plnPerUsd * 1e6) / 1e6;
+  });
+  return rates;
 }
 
 // USD value of an account row; "You owe" counts as negative
@@ -548,6 +628,11 @@ function getAccountsSheet() {
     sh.getRange(1, 1, 1, 6).setValues([['Account', 'Type', 'Currency', 'Balance', 'Updated', BASE_CURRENCY]]).setFontWeight('bold');
     sh.setFrozenRows(1);
   }
+  if (sh.getMaxColumns() < 7) sh.insertColumnsAfter(sh.getMaxColumns(), 7 - sh.getMaxColumns());
+  if (clean(sh.getRange(1, 7).getValue()) !== 'Checked') {
+    sh.getRange(1, 7).setValue('Checked').setFontWeight('bold');
+    sh.getRange('G:G').setNumberFormat('yyyy-mm-dd hh:mm');
+  }
   return sh;
 }
 
@@ -556,9 +641,15 @@ function getHistorySheet() {
   let sh = ss.getSheetByName(HISTORY_SHEET);
   if (!sh) {
     sh = ss.insertSheet(HISTORY_SHEET);
-    sh.getRange(1, 1, 1, 4).setValues([['Date', 'Account', 'Balance', 'Currency']]).setFontWeight('bold');
     sh.setFrozenRows(1);
     sh.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm');
+  }
+  if (sh.getMaxColumns() < HISTORY_HEADERS.length) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), HISTORY_HEADERS.length - sh.getMaxColumns());
+  }
+  const head = sh.getRange(1, 1, 1, HISTORY_HEADERS.length).getValues()[0];
+  if (head.join('|') !== HISTORY_HEADERS.join('|')) {
+    sh.getRange(1, 1, 1, HISTORY_HEADERS.length).setValues([HISTORY_HEADERS]).setFontWeight('bold');
   }
   return sh;
 }

@@ -1,5 +1,3 @@
-import '@fontsource-variable/onest';
-import '@fontsource-variable/unbounded';
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { StrictMode } from 'react';

@@ -13,13 +13,13 @@ export default defineConfig({
       manifest: {
         name: 'Kalyta',
         short_name: 'Kalyta',
-        description: 'Your money in one purse: spending, income, transfers and balances.',
+        description: 'Personal finance that lives in your own Google Sheet.',
         start_url: '.',
         scope: '.',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#f5f6f8',
-        theme_color: '#f5f6f8',
+        background_color: '#000000',
+        theme_color: '#000000',
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },

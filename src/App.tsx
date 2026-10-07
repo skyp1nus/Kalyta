@@ -1,203 +1,406 @@
-import { House, Plus, ReceiptText, Settings as SettingsIcon, Wallet } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { BalanceForm, TransferDetails, TransferForm, TxForm } from './components/forms';
-import { Sheet, SyncPill, ToastContext, TopBar } from './components/ui';
-import { native } from './lib/format';
-import { localToday } from './lib/outbox';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { usePrefs } from './lib/prefs';
 import { useStore, useView } from './lib/store';
-import type { Account, Transfer, Tx } from './lib/types';
+import { type Nav, NavContext, type Screen, type SheetSpec } from './nav';
+import { AccountScreen } from './screens/Account';
 import { Accounts } from './screens/Accounts';
-import { Activity } from './screens/Activity';
-import { Add, type AddKind } from './screens/Add';
 import { Home } from './screens/Home';
-import { Settings } from './screens/Settings';
+import { Onboarding } from './screens/Onboarding';
+import { Statistics } from './screens/Statistics';
+import { Transactions } from './screens/Transactions';
+import { SheetContent } from './sheets/SheetContent';
 
-type Tab = 'home' | 'activity' | 'add' | 'accounts' | 'settings';
-type Open =
-  | { kind: 'tx'; t: Tx }
-  | { kind: 'transfer'; t: Transfer }
-  | { kind: 'account'; a: Account }
-  | { kind: 'newTransfer' }
-  | null;
+interface Layer {
+  id: number;
+  screen: Screen;
+}
 
-const TITLES: Record<Tab, string> = {
-  home: 'Kalyta',
-  activity: 'Activity',
-  add: 'New entry',
-  accounts: 'Accounts',
-  settings: 'Settings',
-};
+type Pos = 'top' | 'under' | 'deep' | 'off';
+
+let nextLayerId = 1;
+
+function StackLayer({
+  pos,
+  initial,
+  z,
+  onGone,
+  setNode,
+  children,
+}: {
+  pos: Pos;
+  initial: boolean;
+  z: number;
+  onGone: () => void;
+  setNode: (el: HTMLDivElement | null) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [entered, setEntered] = useState(initial);
+
+  // Mount off-screen, flush styles, then slide in
+  useLayoutEffect(() => {
+    if (entered) return;
+    ref.current?.getBoundingClientRect();
+    setEntered(true);
+  }, [entered]);
+
+  useEffect(() => {
+    if (pos !== 'off') return;
+    const t = setTimeout(onGone, 650);
+    return () => clearTimeout(t);
+  }, [pos, onGone]);
+
+  const cls = !entered || pos === 'off' ? 'off' : pos === 'top' ? '' : 'under';
+  return (
+    <div
+      ref={(el) => {
+        ref.current = el;
+        setNode(el);
+      }}
+      className={`layer ${cls}`}
+      style={{ zIndex: z, visibility: pos === 'deep' ? 'hidden' : undefined }}
+      aria-hidden={pos !== 'top'}
+      inert={pos !== 'top'}
+      onTransitionEnd={(e) => {
+        if (e.target === ref.current && pos === 'off') onGone();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function useThemeAttr() {
+  const { theme } = usePrefs();
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const apply = () => {
+      const t = theme === 'auto' ? (mq.matches ? 'light' : 'dark') : theme;
+      document.documentElement.dataset.theme = t;
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', t === 'light' ? '#f2f2f7' : '#000000');
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [theme]);
+}
+
+// Attaches non-passive touch listeners (needed to stop the page from scrolling while dragging)
+function useTouchDrag(
+  ref: React.RefObject<HTMLElement | null>,
+  handlers: { start: (e: TouchEvent) => void; move: (e: TouchEvent) => void; end: (e: TouchEvent) => void },
+) {
+  const h = useRef(handlers);
+  h.current = handlers;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const start = (e: TouchEvent) => h.current.start(e);
+    const move = (e: TouchEvent) => h.current.move(e);
+    const end = (e: TouchEvent) => h.current.end(e);
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+    };
+  }, [ref]);
+}
 
 export function App() {
   const s = useStore();
   const view = useView();
-  const [tab, setTab] = useState<Tab>(s.settings ? 'home' : 'settings');
-  const [addKind, setAddKind] = useState<AddKind>('expense');
-  const [ym, setYm] = useState(() => localToday().slice(0, 7));
-  const [open, setOpen] = useState<Open>(null);
-  const [toast, setToast] = useState('');
+  useThemeAttr();
 
-  const notify = useCallback((msg: string) => setToast(msg), []);
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(''), 2200);
-    return () => clearTimeout(id);
-  }, [toast]);
+  // ----- screen stack -----
+  const [stack, setStack] = useState<Layer[]>([{ id: 0, screen: { name: 'home' } }]);
+  const [leaving, setLeaving] = useState<Layer[]>([]);
+  const stackRef = useRef(stack);
+  stackRef.current = stack;
+  const nodes = useRef(new Map<number, HTMLDivElement>());
 
-  const close = useCallback(() => setOpen(null), []);
-  const done = useCallback(
-    (msg: string) => {
-      setOpen(null);
-      notify(msg);
-    },
-    [notify],
-  );
+  const pop = useCallback(() => {
+    const st = stackRef.current;
+    if (st.length < 2) return;
+    stackRef.current = st.slice(0, -1);
+    setLeaving((l) => [...l, st[st.length - 1]]);
+    setStack(stackRef.current);
+  }, []);
 
-  const go = (t: Tab) => {
-    setTab(t);
-    window.scrollTo({ top: 0 });
+  const push = useCallback((screen: Screen) => {
+    const st = stackRef.current;
+    const kept = st.filter((l, i) => i === 0 || l.screen.name !== screen.name);
+    stackRef.current = [...kept, { id: nextLayerId++, screen }];
+    setStack(stackRef.current);
+  }, []);
+
+  const reset = useCallback((screens: Screen[]) => {
+    const st = stackRef.current;
+    if (st.length > 1) setLeaving((l) => [...l, st[st.length - 1]]);
+    stackRef.current = [
+      st[0],
+      ...screens.filter((x) => x.name !== 'home').map((screen) => ({ id: nextLayerId++, screen })),
+    ];
+    setStack(stackRef.current);
+  }, []);
+
+  const goneHandlers = useRef(new Map<number, () => void>());
+  const onGone = (id: number) => {
+    let f = goneHandlers.current.get(id);
+    if (!f) {
+      f = () => {
+        goneHandlers.current.delete(id);
+        setLeaving((l) => l.filter((x) => x.id !== id));
+      };
+      goneHandlers.current.set(id, f);
+    }
+    return f;
   };
 
-  const connected = s.settings && view;
-  const screen = !connected || tab === 'settings' ? 'settings' : tab;
+  // ----- bottom sheet -----
+  const [sheet, setSheet] = useState<SheetSpec | null>(null);
+  const [sheetOn, setSheetOn] = useState(false);
+  const [sheetKey, setSheetKey] = useState(0);
+  const [tint, setTint] = useState('transparent');
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const sheetScroll = useRef<HTMLDivElement>(null);
+
+  const open = useCallback((spec: SheetSpec) => {
+    clearTimeout(closeTimer.current);
+    setSheet(spec);
+    setSheetKey((k) => k + 1);
+    setTint('transparent');
+    setSheetOn(true);
+    sheetScroll.current?.scrollTo({ top: 0 });
+  }, []);
+
+  const close = useCallback(() => {
+    setSheetOn(false);
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setSheet(null), 520);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }, []);
+
+  // ----- toast -----
+  const [toastState, setToastState] = useState<{ msg: string; undo?: () => void; on: boolean }>({
+    msg: '',
+    on: false,
+  });
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const toast = useCallback((msg: string, undo?: () => void) => {
+    clearTimeout(toastTimer.current);
+    setToastState({ msg, undo, on: true });
+    toastTimer.current = setTimeout(() => setToastState((t) => ({ ...t, on: false })), undo ? 4200 : 2400);
+  }, []);
+
+  const nav = useMemo<Nav>(
+    () => ({ push, pop, reset, open, close, toast }),
+    [push, pop, reset, open, close, toast],
+  );
+
+  // Escape closes the sheet, then goes back
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (sheetOn) close();
+      else pop();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sheetOn, close, pop]);
+
+  // ----- swipe from the left edge to go back -----
+  const appRef = useRef<HTMLDivElement>(null);
+  const edge = useRef<{
+    x: number;
+    y: number;
+    t: number;
+    dx: number;
+    on: boolean;
+    top: HTMLElement;
+    under?: HTMLElement;
+  } | null>(null);
+  useTouchDrag(appRef, {
+    start(e) {
+      const st = stackRef.current;
+      const x = e.touches[0].clientX;
+      if (st.length < 2 || x > 24 || e.touches.length > 1) return;
+      const top = nodes.current.get(st[st.length - 1].id);
+      if (!top) return;
+      const under = nodes.current.get(st[st.length - 2].id);
+      edge.current = { x, y: e.touches[0].clientY, t: e.timeStamp, dx: 0, on: false, top, under };
+    },
+    move(e) {
+      const g = edge.current;
+      if (!g) return;
+      const dx = e.touches[0].clientX - g.x;
+      const dy = e.touches[0].clientY - g.y;
+      if (!g.on) {
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+          edge.current = null;
+          return;
+        }
+        if (dx < 8) return;
+        g.on = true;
+        g.top.style.transition = 'none';
+        if (g.under) g.under.style.transition = 'none';
+      }
+      e.preventDefault();
+      g.dx = Math.max(0, dx);
+      const w = appRef.current?.clientWidth ?? 390;
+      g.top.style.transform = `translate3d(${g.dx}px,0,0)`;
+      if (g.under) g.under.style.transform = `translate3d(${-0.3 * w + 0.3 * g.dx}px,0,0)`;
+    },
+    end(e) {
+      const g = edge.current;
+      edge.current = null;
+      if (!g?.on) return;
+      const w = appRef.current?.clientWidth ?? 390;
+      const v = g.dx / Math.max(1, e.timeStamp - g.t);
+      const back = g.dx > w * 0.35 || (v > 0.5 && g.dx > 40);
+      g.top.style.transition = '';
+      g.top.style.transform = back ? 'translate3d(100%,0,0)' : '';
+      if (g.under) {
+        g.under.style.transition = '';
+        g.under.style.transform = '';
+      }
+      if (back) pop();
+    },
+  });
+
+  // ----- drag the sheet down to close it -----
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetDrag = useRef<{ x: number; y: number; t: number; dy: number; on: boolean } | null>(null);
+  useTouchDrag(sheetRef, {
+    start(e) {
+      const target = e.target as HTMLElement;
+      if (target.closest('input, textarea, .handle, .cat-chips, .acc-chips')) return;
+      if ((sheetScroll.current?.scrollTop ?? 0) > 0) return;
+      sheetDrag.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        t: e.timeStamp,
+        dy: 0,
+        on: false,
+      };
+    },
+    move(e) {
+      const g = sheetDrag.current;
+      const el = sheetRef.current;
+      if (!g || !el) return;
+      const dx = e.touches[0].clientX - g.x;
+      const dy = e.touches[0].clientY - g.y;
+      if (!g.on) {
+        if (dy < 0 || Math.abs(dx) > Math.abs(dy)) {
+          sheetDrag.current = null;
+          return;
+        }
+        if (dy < 8) return;
+        g.on = true;
+        el.classList.add('dragging');
+      }
+      e.preventDefault();
+      g.dy = Math.max(0, dy - 8);
+      el.style.transform = `translate3d(0,${g.dy}px,0)`;
+    },
+    end(e) {
+      const g = sheetDrag.current;
+      const el = sheetRef.current;
+      sheetDrag.current = null;
+      if (!g?.on || !el) return;
+      const v = g.dy / Math.max(1, e.timeStamp - g.t);
+      el.classList.remove('dragging');
+      el.style.transform = '';
+      if (g.dy > 140 || (v > 0.6 && g.dy > 30)) close();
+    },
+  });
+
+  const renderScreen = (screen: Screen) => {
+    switch (screen.name) {
+      case 'home':
+        return <Home view={view} />;
+      case 'accounts':
+        return view && <Accounts view={view} />;
+      case 'account':
+        return view && <AccountScreen view={view} name={screen.account} />;
+      case 'transactions':
+        return view && <Transactions view={view} ym={screen.ym} filter={screen.filter} />;
+      case 'stats':
+        return view && <Statistics view={view} ym={screen.ym} />;
+    }
+  };
+
+  const layers: Array<{ layer: Layer; pos: Pos }> = [
+    ...stack.map((layer, i) => ({
+      layer,
+      pos: (i === stack.length - 1 ? 'top' : i === stack.length - 2 ? 'under' : 'deep') as Pos,
+    })),
+    ...leaving.map((layer) => ({ layer, pos: 'off' as Pos })),
+  ];
 
   return (
-    <ToastContext.Provider value={notify}>
-      <div className="app">
-        <TopBar
-          title={
-            screen === 'home' ? (
-              <h1 className="wordmark">Kalyta</h1>
-            ) : screen === 'activity' ? (
-              <span />
-            ) : (
-              <h1 className="screen-title">{TITLES[screen]}</h1>
-            )
-          }
-        >
-          {s.settings && <SyncPill onOpen={() => go('settings')} />}
-        </TopBar>
-
-        <main>
-          {screen === 'settings' && <Settings onConnected={() => go('home')} />}
-          {connected && screen === 'home' && (
-            <Home
-              view={view}
-              onOpenTx={(t) => setOpen({ kind: 'tx', t })}
-              onOpenTransfer={(t) => setOpen({ kind: 'transfer', t })}
-              onSeeAll={() => {
-                setYm(view.today.slice(0, 7));
-                go('activity');
-              }}
-              onAccounts={() => go('accounts')}
-            />
-          )}
-          {connected && screen === 'activity' && (
-            <Activity
-              view={view}
-              ym={ym}
-              setYm={setYm}
-              onOpenTx={(t) => setOpen({ kind: 'tx', t })}
-              onOpenTransfer={(t) => setOpen({ kind: 'transfer', t })}
-            />
-          )}
-          {connected && screen === 'add' && (
-            <Add view={view} kind={addKind} setKind={setAddKind} onDone={notify} />
-          )}
-          {connected && screen === 'accounts' && (
-            <Accounts
-              view={view}
-              onOpenAccount={(a) => setOpen({ kind: 'account', a })}
-              onOpenTransfer={(t) => setOpen({ kind: 'transfer', t })}
-              onNewTransfer={() => setOpen({ kind: 'newTransfer' })}
-            />
-          )}
-        </main>
+    <NavContext.Provider value={nav}>
+      <div className="app" ref={appRef} inert={sheetOn || !s.settings}>
+        {layers.map(({ layer, pos }, i) => (
+          <StackLayer
+            key={layer.id}
+            pos={pos}
+            z={i + 1}
+            initial={layer.id === 0}
+            onGone={onGone(layer.id)}
+            setNode={(el) => {
+              if (el) nodes.current.set(layer.id, el);
+              else nodes.current.delete(layer.id);
+            }}
+          >
+            {renderScreen(layer.screen)}
+          </StackLayer>
+        ))}
       </div>
 
-      {connected && open?.kind === 'tx' && (
-        <Sheet title={open.t.category === view.income ? 'Edit income' : 'Edit expense'} onClose={close}>
-          <TxForm
-            view={view}
-            kind={open.t.category === view.income ? 'income' : 'expense'}
-            initial={open.t}
-            onDone={done}
-          />
-        </Sheet>
-      )}
-      {connected && open?.kind === 'transfer' && (
-        <Sheet title="Transfer" onClose={close}>
-          <TransferDetails t={open.t} onDone={done} />
-        </Sheet>
-      )}
-      {connected && open?.kind === 'account' && (
-        <Sheet title={`${open.a.name}, ${native(open.a.balance, open.a.currency)}`} onClose={close}>
-          <BalanceForm view={view} account={open.a} onDone={done} />
-        </Sheet>
-      )}
-      {connected && open?.kind === 'newTransfer' && (
-        <Sheet title="Move money" onClose={close}>
-          <TransferForm view={view} onDone={done} />
-        </Sheet>
-      )}
-
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
+      <div className={`scrim ${sheetOn ? 'on' : ''}`} onClick={close} aria-hidden="true" />
+      <div
+        ref={sheetRef}
+        className={`sheet ${sheetOn ? 'on' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!sheetOn}
+        inert={!sheetOn}
+      >
+        <div className="tint" style={{ background: tint }} />
+        <div className="grabber" />
+        <div className="scroll" ref={sheetScroll}>
+          <div className="sheet-body">
+            {sheet && view && <SheetContent key={sheetKey} spec={sheet} view={view} setTint={setTint} />}
+          </div>
         </div>
-      )}
+      </div>
 
-      {s.settings && (
-        <div className="tabbar">
-          <nav aria-label="Main">
+      {!s.settings && <Onboarding />}
+
+      <div className={`toast-wrap ${toastState.on ? 'on' : ''}`} role="status" aria-live="polite">
+        <div className={`toast ${toastState.undo ? 'has-undo' : ''}`}>
+          <span>{toastState.msg}</span>
+          {toastState.undo && (
             <button
               type="button"
-              className="tab"
-              aria-current={tab === 'home' ? 'page' : undefined}
-              onClick={() => go('home')}
+              onClick={() => {
+                toastState.undo?.();
+                clearTimeout(toastTimer.current);
+                setToastState((t) => ({ ...t, on: false, undo: undefined }));
+              }}
             >
-              <House size={22} />
-              Home
+              Undo
             </button>
-            <button
-              type="button"
-              className="tab"
-              aria-current={tab === 'activity' ? 'page' : undefined}
-              onClick={() => go('activity')}
-            >
-              <ReceiptText size={22} />
-              Activity
-            </button>
-            <button
-              type="button"
-              className="tab-add"
-              aria-label="New entry"
-              aria-current={tab === 'add' ? 'page' : undefined}
-              onClick={() => go('add')}
-            >
-              <Plus size={26} strokeWidth={2.4} />
-            </button>
-            <button
-              type="button"
-              className="tab"
-              aria-current={tab === 'accounts' ? 'page' : undefined}
-              onClick={() => go('accounts')}
-            >
-              <Wallet size={22} />
-              Accounts
-            </button>
-            <button
-              type="button"
-              className="tab"
-              aria-current={tab === 'settings' ? 'page' : undefined}
-              onClick={() => go('settings')}
-            >
-              <SettingsIcon size={22} />
-              Settings
-            </button>
-          </nav>
+          )}
         </div>
-      )}
-    </ToastContext.Provider>
+      </div>
+    </NavContext.Provider>
   );
 }

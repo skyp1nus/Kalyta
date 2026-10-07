@@ -79,10 +79,13 @@ export function useView(): View | null {
 
 // ----- actions -----
 
-export function enqueue(body: OpBody) {
-  const op = { ...body, opId: newId(), createdAt: Date.now() } as Op;
+// holdMs keeps the entry on the phone for a while so "Undo" can take it back before it reaches the sheet
+export function enqueue(body: OpBody, holdMs = 0): string {
+  const now = Date.now();
+  const op = { ...body, opId: newId(), createdAt: now, notBefore: holdMs ? now + holdMs : undefined } as Op;
   set({ outbox: [...state.outbox, op] });
   void sync();
+  return op.opId;
 }
 
 export function discardOp(opId: string) {
@@ -91,6 +94,19 @@ export function discardOp(opId: string) {
 
 export function retryOp(opId: string) {
   set({ outbox: state.outbox.map((o) => (o.opId === opId ? { ...o, error: undefined } : o)) });
+  void sync();
+}
+
+export function retryAll() {
+  set({ outbox: state.outbox.map((o) => (o.error ? { ...o, error: undefined } : o)) });
+  void sync();
+}
+
+// Recreates missing tabs in the sheet, then tries everything that failed again
+export function repairAndRetry() {
+  const body: OpBody = { action: 'repair' };
+  const op = { ...body, opId: newId(), createdAt: Date.now() } as Op;
+  set({ outbox: [op, ...state.outbox.map((o) => (o.error ? { ...o, error: undefined } : o))] });
   void sync();
 }
 
@@ -105,6 +121,7 @@ export function forgetDevice() {
 
 let running = false;
 let again = false;
+let wake: ReturnType<typeof setTimeout> | undefined;
 
 // Sends queued entries one by one, then pulls fresh data
 export async function sync(): Promise<void> {
@@ -118,9 +135,15 @@ export async function sync(): Promise<void> {
   set({ syncing: true });
   try {
     let fresh = false;
+    let held = Number.POSITIVE_INFINITY;
     for (const op of state.outbox) {
       if (op.error) continue;
-      const { opId, createdAt: _c, error: _e, ...body } = op;
+      if (op.notBefore && op.notBefore > Date.now()) {
+        held = Math.min(held, op.notBefore);
+        continue;
+      }
+      if (!state.outbox.some((o) => o.opId === op.opId)) continue; // undone while we were sending
+      const { opId, createdAt: _c, error: _e, notBefore: _n, ...body } = op;
       try {
         const data = await callApi(settings, body as OpBody);
         set({
@@ -144,6 +167,10 @@ export async function sync(): Promise<void> {
       set({ server: data, online: true, lastError: null });
     }
     set({ lastSync: Date.now() });
+    if (held < Number.POSITIVE_INFINITY) {
+      clearTimeout(wake);
+      wake = setTimeout(() => void sync(), held - Date.now() + 50);
+    }
   } catch (err) {
     set({ online: err instanceof NetworkError ? false : state.online, lastError: (err as Error).message });
   } finally {

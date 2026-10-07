@@ -29,13 +29,31 @@ export interface Account {
   currency: string;
   balance: number;
   updated: string;
+  checked?: string; // last time the balance was entered by hand
   usd: number | null;
+}
+
+// [id, date, account, change, currency] as the API sends them
+export type AdjustmentRow = [id: string, date: string, account: string, change: number, currency: string];
+
+// A balance correction that isn't spending or income
+export interface Adjustment {
+  id: string;
+  date: string;
+  account: string;
+  change: number;
+  currency: string;
+  pending?: boolean;
+  failed?: string;
 }
 
 export interface ServerData {
   tx: TxRow[];
   transfers: TransferRow[];
   accounts: Account[];
+  adjustments?: AdjustmentRow[];
+  rates?: Record<string, number>; // USD per unit
+  sheetName?: string;
   categories: string[];
   colors: string[];
   income: string;
@@ -103,12 +121,16 @@ export type OpBody =
   | { action: 'update'; id: string; tx: TxInput }
   | { action: 'delete'; id: string }
   | { action: 'transfer'; tr: TransferInput }
+  | { action: 'updateTransfer'; id: string; tr: TransferInput }
   | { action: 'deleteTransfer'; id: string }
-  | { action: 'balance'; account: string; balance: string };
+  | { action: 'balance'; account: string; balance: string; mode?: 'adjust' | 'check'; id?: string }
+  | { action: 'deleteAdjustment'; id: string }
+  | { action: 'repair' };
 
 export type Op = OpBody & {
   opId: string;
   createdAt: number;
+  notBefore?: number; // held back until then so the user can undo
   error?: string; // set when the server rejected it; stays until retried or discarded
 };
 
@@ -121,6 +143,10 @@ export interface View {
   tx: Tx[];
   transfers: Transfer[];
   accounts: Account[];
+  adjustments: Adjustment[];
+  rates: Record<string, number>; // USD per unit
+  fetchedAt: string;
+  sheetName: string;
   categories: string[];
   colors: string[];
   income: string;

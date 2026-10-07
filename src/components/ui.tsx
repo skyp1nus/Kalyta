@@ -1,204 +1,272 @@
-import { AlertCircle, ArrowRightLeft, Clock, X } from 'lucide-react';
-import { createContext, type ReactNode, useContext, useEffect, useRef } from 'react';
-import { money, native, time } from '../lib/format';
-import { type CategoryTotal, categoryColor, title } from '../lib/stats';
-import { useStore } from '../lib/store';
-import type { Transfer, Tx, View } from '../lib/types';
+import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from 'react';
+import { accountLook } from '../lib/meta';
 
-// ----- toast -----
-export const ToastContext = createContext<(msg: string) => void>(() => {});
-export const useToast = () => useContext(ToastContext);
-
-// ----- sync status in the top bar -----
-export function SyncPill({ onOpen }: { onOpen: () => void }) {
-  const s = useStore();
-  const waiting = s.outbox.filter((o) => !o.error).length;
-  const failed = s.outbox.filter((o) => o.error).length;
-  let cls = '';
-  let text = 'Synced';
-  if (failed) {
-    cls = 'err';
-    text = `${failed} not saved`;
-  } else if (!s.online) {
-    cls = 'off';
-    text = waiting ? `Offline, ${waiting} waiting` : 'Offline';
-  } else if (s.syncing) {
-    cls = 'wait';
-    text = 'Syncing';
-  } else if (waiting) {
-    cls = 'wait';
-    text = `${waiting} waiting`;
-  } else if (s.lastError) {
-    cls = 'err';
-    text = 'Sync failed';
-  }
+export function Icon({
+  name,
+  size,
+  fill,
+  className = '',
+  style,
+}: {
+  name: string;
+  size?: number;
+  fill?: boolean;
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
-    <button type="button" className={`sync ${cls}`} onClick={onOpen} aria-label={`Sync status: ${text}`}>
-      <span className="dot" aria-hidden="true" />
-      {text}
+    <span
+      className={`ms ${className}`}
+      aria-hidden="true"
+      style={{
+        fontSize: size,
+        fontVariationSettings: fill ? "'FILL' 1" : undefined,
+        ...style,
+      }}
+    >
+      {name}
+    </span>
+  );
+}
+
+export function CircleButton({
+  icon,
+  label,
+  onClick,
+  size = 'normal',
+  iconSize,
+  disabled,
+  className = '',
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  size?: 'small' | 'normal' | 'mid' | 'big';
+  iconSize?: number;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`cbtn ${size === 'normal' ? '' : size} ${className}`}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <Icon name={icon} size={iconSize ?? (size === 'small' ? 22 : 24)} />
     </button>
   );
 }
 
-export function TopBar({ title, children }: { title: ReactNode; children?: ReactNode }) {
+export function BackButton({ onClick }: { onClick: () => void }) {
+  return <CircleButton icon="chevron_left" label="Back" iconSize={28} onClick={onClick} />;
+}
+
+export function Avatar({
+  name,
+  type,
+  size = 40,
+  className = 'avatar',
+}: {
+  name: string;
+  type?: string;
+  size?: number;
+  className?: string;
+}) {
+  const look = accountLook(name, type);
   return (
-    <header className="topbar">
-      {title}
-      {children}
-    </header>
+    <span
+      className={className}
+      aria-hidden="true"
+      style={{ background: look.color, width: size, height: size, fontSize: Math.round(size * 0.43) }}
+    >
+      {look.icon ? <Icon name={look.icon} size={Math.round(size * 0.55)} /> : look.letter}
+    </span>
   );
 }
 
-// ----- bottom sheet -----
-export function Sheet({
+export function SectionHead({ title, action }: { title: string; action?: ReactNode }) {
+  return (
+    <div className="section-head">
+      <h2>{title}</h2>
+      {action}
+    </div>
+  );
+}
+
+export function Toggle({ on, label, onChange }: { on: boolean; label: string; onChange?: () => void }) {
+  if (!onChange)
+    return (
+      <span className={`toggle ${on ? 'on' : ''}`} aria-hidden="true">
+        <i />
+      </span>
+    );
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      className={`toggle ${on ? 'on' : ''}`}
+      onClick={onChange}
+    >
+      <i />
+    </button>
+  );
+}
+
+// Segmented control with a sliding thumb
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: Array<{ value: T; label: string; icon?: string }>;
+  value: T;
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  const i = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  );
+  return (
+    <div className="segmented" title={label}>
+      <span
+        className="thumb"
+        style={{
+          width: `calc((100% - 6px - ${(options.length - 1) * 2}px) / ${options.length})`,
+          transform: `translateX(calc(${i * 100}% + ${i * 2}px))`,
+        }}
+      />
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={o.value === value}
+          onClick={() => onChange(o.value)}
+        >
+          {o.icon && <Icon name={o.icon} />}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function EmptyState({
+  icon,
   title,
-  onClose,
-  children,
+  text,
+  action,
+  onAction,
+}: {
+  icon: string;
+  title: string;
+  text: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="empty">
+      <Icon name={icon} />
+      <div className="et">{title}</div>
+      <div className="ex">{text}</div>
+      {action && (
+        <button type="button" className="soft-btn" onClick={onAction}>
+          {action}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function MonthHead({
+  title,
+  sub,
+  canPrev,
+  canNext,
+  onPrev,
+  onNext,
 }: {
   title: string;
-  onClose: () => void;
-  children: ReactNode;
+  sub: string;
+  canPrev: boolean;
+  canNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    ref.current?.focus();
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: tapping the dimmed backdrop closes the sheet; Escape and the close button do the same
-    <div className="backdrop" onClick={(e) => e.target === e.currentTarget && onClose()} role="presentation">
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
-        <div className="grabber" aria-hidden="true" />
-        <div className="sheet-head">
-          <h2>{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </div>
-        {children}
+    <div className="month-head">
+      <div>
+        <div className="mt">{title}</div>
+        <div className="msub">{sub}</div>
+      </div>
+      <div className="arrows">
+        <CircleButton
+          icon="chevron_left"
+          label="Previous month"
+          size="small"
+          onClick={onPrev}
+          disabled={!canPrev}
+        />
+        <CircleButton
+          icon="chevron_right"
+          label="Next month"
+          size="small"
+          onClick={onNext}
+          disabled={!canNext}
+        />
       </div>
     </div>
   );
 }
 
-// ----- rows -----
-export function TxRowItem({ t, view, onOpen }: { t: Tx; view: View; onOpen: (t: Tx) => void }) {
-  const income = t.category === view.income;
-  const color = categoryColor(view, t.category);
-  const meta = [t.category || 'No category', t.account, time(t.date)].filter(Boolean).join(', ');
-  return (
-    <button type="button" className="row" onClick={() => onOpen(t)}>
-      <span className="mark" style={{ background: color }} aria-hidden="true">
-        {(t.category || '?').slice(0, 1)}
-      </span>
-      <span className="main">
-        <p className="title">{title(t)}</p>
-        <p className="meta">
-          {t.failed ? (
-            <span className="badge err">
-              <AlertCircle size={12} /> Not saved: {t.failed}
-            </span>
-          ) : t.pending ? (
-            <span className="badge">
-              <Clock size={12} /> Waiting to sync
-            </span>
-          ) : (
-            meta
-          )}
-        </p>
-      </span>
-      <span className={`amount num ${income ? 'good' : ''}`}>
-        {income ? '+' : ''}
-        {t.currency === 'USD' || t.usd == null ? native(t.amount, t.currency) : money(t.usd, 2)}
-        {t.currency !== 'USD' && t.usd != null && <span className="sub">{native(t.amount, t.currency)}</span>}
-      </span>
-    </button>
-  );
-}
-
-export function TransferRowItem({ t, onOpen }: { t: Transfer; onOpen: (t: Transfer) => void }) {
-  return (
-    <button type="button" className="row" onClick={() => onOpen(t)}>
-      <span className="mark" style={{ background: 'var(--ink-3)' }} aria-hidden="true">
-        <ArrowRightLeft size={16} />
-      </span>
-      <span className="main">
-        <p className="title">
-          {t.from} to {t.to}
-        </p>
-        <p className="meta">
-          {t.failed ? (
-            <span className="badge err">
-              <AlertCircle size={12} /> Not saved: {t.failed}
-            </span>
-          ) : t.pending ? (
-            <span className="badge">
-              <Clock size={12} /> Waiting to sync
-            </span>
-          ) : (
-            ['Transfer', t.note, time(t.date)].filter(Boolean).join(', ')
-          )}
-        </p>
-      </span>
-      <span className="amount num">
-        {native(t.received, t.toCurrency)}
-        <span className="sub">{native(t.sent, t.fromCurrency)}</span>
-      </span>
-    </button>
-  );
-}
-
-// ----- category bars -----
-export function CategoryBars({ totals, total }: { totals: CategoryTotal[]; total: number }) {
-  const max = Math.max(0, ...totals.map((c) => c.value));
-  if (!totals.some((c) => c.value > 0)) return <p className="empty">No spending yet.</p>;
-  return (
-    <div>
-      {totals
-        .filter((c) => c.value > 0)
-        .sort((a, b) => b.value - a.value)
-        .map((c) => (
-          <div className="bar-row" key={c.name}>
-            <span className="name">
-              <span className="swatch" style={{ background: c.color }} />
-              {c.name}
-            </span>
-            <span className="track" aria-hidden="true">
-              <span
-                style={{ width: `${max ? Math.max(1.5, (c.value / max) * 100) : 0}%`, background: c.color }}
-              />
-            </span>
-            <span className="right num">{money(c.value)}</span>
-            <span className="right small muted num">{total ? Math.round((c.value / total) * 100) : 0}%</span>
-          </div>
-        ))}
-    </div>
-  );
-}
-
-export function Tile({
-  label,
+// A text input that grows with its content, like the big amount fields in the design
+export function AmountInput({
   value,
-  sub,
-  tone,
+  onChange,
+  placeholder = '0',
+  charWidth,
+  className = 'amount-input',
+  label,
+  autoFocus,
 }: {
-  label: string;
   value: string;
-  sub?: string;
-  tone?: 'good' | 'bad';
+  onChange: (v: string) => void;
+  placeholder?: string;
+  charWidth: number;
+  className?: string;
+  label: string;
+  autoFocus?: boolean;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (autoFocus) ref.current?.focus({ preventScroll: true });
+  }, [autoFocus]);
+  const len = Math.max(1, (value || placeholder).length);
   return (
-    <div className="tile">
-      <p className="label">{label}</p>
-      <p className={`value num ${tone ?? ''}`}>{value}</p>
-      {sub && <p className="sub">{sub}</p>}
+    <input
+      ref={ref}
+      className={className}
+      value={value}
+      inputMode="decimal"
+      autoComplete="off"
+      enterKeyHint="done"
+      aria-label={label}
+      placeholder={placeholder}
+      style={{ width: len * charWidth + 6 }}
+      onChange={(e) => onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
+    />
+  );
+}
+
+export function Skeleton({ children }: { children: ReactNode }) {
+  return (
+    <div className="skeleton" aria-hidden="true">
+      {children}
     </div>
   );
 }
