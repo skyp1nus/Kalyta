@@ -322,8 +322,19 @@ input[type="search"]::-webkit-search-decoration {
   overflow: hidden;
   opacity: 0.85;
   pointer-events: none;
-  will-change: transform;
   contain: strict;
+}
+
+/* the glow continues above the top edge for the pull-down bounce */
+.home-bg-up {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -600px;
+  height: 600px;
+  background: var(--glow);
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .home-bg-base {

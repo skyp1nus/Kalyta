@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useOpenEntry } from '../components/hooks';
 import { UpdatePill } from '../components/Overlays';
 import { EntryRow } from '../components/rows';
@@ -384,20 +384,23 @@ function HomeSkeleton() {
 }
 
 // Grey glow behind Home: base gradient plus three slowly drifting blobs (CSS animations on transform/opacity).
-// It lives outside the scroll area, so pulling down never reveals an empty band above it.
-const HomeBackdrop = memo(function HomeBackdrop({ innerRef }: { innerRef: React.Ref<HTMLDivElement> }) {
+// It scrolls natively with the content (no JS on scroll, so it never trails behind); a band of the
+// same glow sits above it, so pulling down never reveals an empty strip.
+const HomeBackdrop = memo(function HomeBackdrop() {
   return (
-    <div className="home-bg" ref={innerRef} aria-hidden="true">
-      <div className="home-bg-base" />
-      <div className="blob blob-a" />
-      <div className="blob blob-b" />
-      <div className="blob blob-c" />
-    </div>
+    <>
+      <div className="home-bg-up" aria-hidden="true" />
+      <div className="home-bg" aria-hidden="true">
+        <div className="home-bg-base" />
+        <div className="blob blob-a" />
+        <div className="blob blob-b" />
+        <div className="blob blob-c" />
+      </div>
+    </>
   );
 });
 
 export const Home = memo(function Home({ view }: { view: View | null }) {
-  const bgRef = useRef<HTMLDivElement>(null);
   const nav = useNav();
   const s = useStore();
   const prefs = usePrefs();
@@ -410,15 +413,8 @@ export const Home = memo(function Home({ view }: { view: View | null }) {
 
   return (
     <>
-      <HomeBackdrop innerRef={bgRef} />
-      <div
-        className="scroll"
-        onScroll={(e) => {
-          // follow the content when scrolling up; stay pinned during the pull-down bounce
-          const y = Math.max(0, e.currentTarget.scrollTop);
-          if (bgRef.current) bgRef.current.style.transform = `translate3d(0,${-y}px,0)`;
-        }}
-      >
+      <div className="scroll">
+        <HomeBackdrop />
         <div className="page home">
           {view ? (
             <HomeBody view={view} order={order} />
