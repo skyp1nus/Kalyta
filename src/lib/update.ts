@@ -23,6 +23,8 @@ let state: UpdateState = {
 };
 const listeners = new Set<() => void>();
 let updateSW: ((reload?: boolean) => Promise<void>) | null = null;
+// decided at startup, before onboarding can connect the device
+let launch: 'whatsnew' | 'installed' | null = null;
 
 function set(patch: Partial<UpdateState>) {
   state = { ...state, ...patch };
@@ -41,6 +43,12 @@ export function useUpdate(): UpdateState {
 }
 
 export function startUpdates() {
+  const seen = getPrefs().seenVersion;
+  if (seen !== VERSION) {
+    // people on 2.0 never stored a version, but they are already connected
+    launch = seen || getState().settings ? 'whatsnew' : 'installed';
+    setPrefs({ seenVersion: VERSION });
+  }
   updateSW = registerSW({
     immediate: true,
     onNeedRefresh: () => set({ available: true }),
@@ -63,14 +71,11 @@ export function applyUpdate() {
   set({ updating: true });
   setTimeout(() => set({ reloading: true }), 900);
   setTimeout(() => void updateSW?.(true), 1100);
+  // the page may not be controlled by the old worker yet, so nothing would reload it
+  setTimeout(() => location.reload(), 5000);
 }
 
 // What to show once after start: "What's new" after an update, "Ready to work offline" after install
 export function launchNotice(): 'whatsnew' | 'installed' | null {
-  const seen = getPrefs().seenVersion;
-  if (seen === VERSION) return null;
-  setPrefs({ seenVersion: VERSION });
-  // people on 2.0 never stored a version, but they are already connected
-  if (seen || getState().settings) return 'whatsnew';
-  return 'installed';
+  return launch;
 }

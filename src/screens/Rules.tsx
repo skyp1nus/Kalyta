@@ -21,7 +21,7 @@ export const Rules = memo(function Rules({ view }: { view: View }) {
             <div className="group" style={{ marginTop: 22 }}>
               {view.rules.map((r, i) => {
                 const meta = categoryMeta(r.cat, view.income);
-                const n = ruleMatches(view, r.kw).length;
+                const n = ruleMatches(view, r.kw).filter((t) => t.category !== view.income).length;
                 return (
                   <div key={r.kw}>
                     {i > 0 && <div className="sep" />}

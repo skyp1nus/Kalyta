@@ -176,7 +176,8 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
         break;
       }
       case 'delete':
-        view.tx = view.tx.filter((t) => t.id !== op.id);
+        // a delete the sheet refused leaves the record where it is
+        if (!failed) view.tx = view.tx.filter((t) => t.id !== op.id);
         break;
       case 'transfer': {
         if (view.transfers.some((t) => t.id === op.tr.id)) break;
@@ -196,12 +197,14 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
         break;
       }
       case 'deleteTransfer': {
+        if (failed) break;
         const tr = view.transfers.find((t) => t.id === op.id);
         view.transfers = view.transfers.filter((t) => t.id !== op.id);
         if (tr && !tr.failed && !failed) moveTransfer(view, tr, -1);
         break;
       }
       case 'deleteAdjustment': {
+        if (failed) break;
         const adj = view.adjustments.find((a) => a.id === op.id);
         view.adjustments = view.adjustments.filter((a) => a.id !== op.id);
         if (adj && !adj.failed && !failed)

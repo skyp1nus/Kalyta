@@ -1,22 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getPrefs, usePrefs } from '../lib/prefs';
-import { checkPasscode, turnLockOff, unlock, usePrivacy, verifyFaceId } from '../lib/privacy';
-import { forgetDevice, useStore } from '../lib/store';
+import {
+  cancelConfirm,
+  passcodeWait,
+  tryPasscode,
+  turnLockOff,
+  unlock,
+  usePrivacy,
+  verifyFaceId,
+} from '../lib/privacy';
+import { forgetDevice, getState, sync, useStore } from '../lib/store';
 import { applyUpdate, dismissUpdate, useUpdate } from '../lib/update';
 import { AppMark } from '../sheets/WhatsNewSheet';
 import { Dots, Keypad } from './Keypad';
 import { BackButton, Icon } from './ui';
 
 export function LockScreen({ sheetName }: { sheetName: string }) {
-  const { locked } = usePrivacy();
+  const { locked, reason } = usePrivacy();
   const prefs = usePrefs();
   const s = useStore();
   const [code, setCode] = useState('');
-  const [errors, setErrors] = useState(0);
   const [msg, setMsg] = useState('');
   const [shake, setShake] = useState(0);
   const [scan, setScan] = useState<0 | 1 | 2>(0);
   const [forgot, setForgot] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [wait, setWait] = useState(passcodeWait());
+  const busy = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const shown = locked && prefs.lockOn && !!s.settings;
 
   useEffect(() => {
     if (!locked) {
@@ -26,24 +38,36 @@ export function LockScreen({ sheetName }: { sheetName: string }) {
     }
   }, [locked]);
 
-  if (!locked || !prefs.lockOn || !s.settings) return null;
+  // move focus out of the app behind
+  useEffect(() => {
+    if (shown) root.current?.focus();
+  }, [shown]);
+
+  // count down after too many wrong passcodes
+  useEffect(() => {
+    if (!shown) return;
+    setWait(passcodeWait());
+    const t = setInterval(() => setWait(passcodeWait()), 1000);
+    return () => clearInterval(t);
+  }, [shown]);
+
+  if (!shown) return null;
 
   function digit(d: string) {
-    if (code.length >= 6 || scan) return;
+    if (busy.current || code.length >= 6 || scan || passcodeWait() > 0) return;
     const c = code + d;
     setCode(c);
     setMsg('');
     if (c.length < 6) return;
+    busy.current = true;
     setTimeout(async () => {
-      if (await checkPasscode(c)) {
-        setErrors(0);
-        unlock();
-        return;
-      }
-      const n = errors + 1;
-      setErrors(n);
+      const res = await tryPasscode(c);
+      busy.current = false;
+      if (res === 'ok') return unlock();
       setCode('');
       setShake((x) => x + 1);
+      setWait(passcodeWait());
+      const n = getPrefs().passFails;
       setMsg(n >= 3 ? `Wrong passcode · ${n} attempts` : 'Wrong passcode');
     }, 160);
   }
@@ -60,34 +84,67 @@ export function LockScreen({ sheetName }: { sheetName: string }) {
     }, 450);
   }
 
+  async function reconnect() {
+    setLeaving(true);
+    // send what's still on the phone while the access key is here
+    if (getState().outbox.some((o) => !o.error)) await sync().catch(() => undefined);
+    turnLockOff();
+    forgetDevice();
+    setLeaving(false);
+  }
+
+  const waitMin = Math.ceil(wait / 60e3);
+  const title =
+    wait > 0
+      ? `Try again in ${waitMin} min`
+      : msg || (reason ? `Enter passcode to ${reason.toLowerCase()}` : 'Enter passcode');
+
   const unsynced = s.outbox.length;
   const canFace = getPrefs().lockMethod === 'face' && !!getPrefs().credId;
 
   return (
-    <div className="lock-screen" role="dialog" aria-modal="true" aria-label="Kalyta is locked">
+    <div
+      ref={root}
+      tabIndex={-1}
+      className="lock-screen"
+      role="dialog"
+      aria-modal="true"
+      aria-label={reason || 'Kalyta is locked'}
+    >
       <div className="glow home" style={{ height: 620 }} />
       {!forgot ? (
         <div className="lock-pad">
           <AppMark size={64} />
-          <div style={{ fontSize: 17, marginTop: 18, color: msg ? 'var(--red)' : 'var(--text)' }}>
-            {msg || 'Enter passcode'}
+          <div style={{ fontSize: 17, marginTop: 18, color: msg || wait > 0 ? 'var(--red)' : 'var(--text)' }}>
+            {title}
           </div>
           <Dots filled={code.length} error={!!msg} shake={shake} />
           <div style={{ marginTop: 44 }}>
             <Keypad
               onDigit={digit}
-              onDelete={() => setCode((c) => c.slice(0, -1))}
+              onDelete={() => !busy.current && setCode((c) => c.slice(0, -1))}
               onFace={canFace ? () => void face() : undefined}
             />
           </div>
-          <button
-            type="button"
-            className="text-btn"
-            style={{ marginTop: 30, fontSize: 16 }}
-            onClick={() => setForgot(true)}
-          >
-            Forgot passcode?
-          </button>
+          {reason ? (
+            <button
+              type="button"
+              className="text-btn"
+              style={{ marginTop: 30, fontSize: 16 }}
+              onClick={cancelConfirm}
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-btn"
+              style={{ marginTop: 30, fontSize: 16 }}
+              onClick={() => setForgot(true)}
+            >
+              Forgot passcode?
+            </button>
+          )}
           {scan > 0 && (
             <div className="face-scan">
               <div className="card">
@@ -147,19 +204,13 @@ export function LockScreen({ sheetName }: { sheetName: string }) {
               <Icon name="warning" />
               {unsynced}
               {unsynced === 1 ? ' record on this iPhone hasn’t' : ' records on this iPhone haven’t'} reached
-              the Sheet yet and will be removed.
+              the Sheet yet. Kalyta tries to send {unsynced === 1 ? 'it' : 'them'} first; what can’t be sent
+              is removed.
             </div>
           )}
           <div style={{ flex: 1, minHeight: 24 }} />
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={() => {
-              turnLockOff();
-              forgetDevice();
-            }}
-          >
-            Reconnect this iPhone
+          <button type="button" className="primary-btn" disabled={leaving} onClick={() => void reconnect()}>
+            {leaving ? 'Sending records…' : 'Reconnect this iPhone'}
           </button>
           <button type="button" className="text-btn" onClick={() => setForgot(false)}>
             Back to passcode

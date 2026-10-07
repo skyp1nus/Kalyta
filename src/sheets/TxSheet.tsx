@@ -106,26 +106,43 @@ export function TxSheet({
     !view.rules.some((r) => norm(r.kw) === norm(kw) && r.cat === category);
   const pastCount = rulePrompt
     ? view.tx.filter(
-        (t) => t.id !== edit?.id && t.category !== view.income && t.merchant && placeMatches(kw, t.merchant),
+        (t) =>
+          t.id !== edit?.id &&
+          t.category !== view.income &&
+          t.category !== category &&
+          t.merchant &&
+          placeMatches(kw, t.merchant),
       ).length
     : 0;
 
-  // "Food · 92% of budget" when this expense crosses 80% or 100% of the category's limit
+  // "Food · 92% of budget" when this expense crosses 80% or 100% of the category's limit,
+  // or of the overall monthly limit
   function budgetToast(cat: string, usdNow: number | null): [string, ToastIcon] | null {
-    const lim = view.budgets.cats[cat];
     const ym = view.today.slice(0, 7);
-    if (kind !== 'expense' || !lim || usdNow == null || !date.startsWith(ym)) return null;
-    const before = new Map(monthSummary(view, ym).cats).get(cat) ?? 0;
-    const old = edit && edit.category === cat && edit.date.startsWith(ym) ? (edit.usd ?? 0) : 0;
-    const after = before - old + usdNow;
-    const p0 = (before / lim) * 100;
-    const p1 = (after / lim) * 100;
-    if (!((p0 < 80 && p1 >= 80) || (p0 <= 100 && p1 > 100))) return null;
-    const over = p1 > 100;
-    return [
-      `${cat} · ${Math.round(p1)}% of budget${over ? ` · ${money.B(after - lim)} over` : ''}`,
-      { icon: over ? 'error' : 'donut_large', color: over ? 'var(--red)' : '#ff9f0a' },
-    ];
+    if (kind !== 'expense' || usdNow == null || !date.startsWith(ym)) return null;
+    const m = monthSummary(view, ym);
+    // records without a known category count as Other, like in Statistics
+    const catOf = (c: string) => (view.categories.includes(c) ? c : 'Other');
+    const wasThisMonth = !!edit && edit.category !== view.income && edit.date.startsWith(ym);
+    const check = (label: string, lim: number | undefined, before: number, old: number) => {
+      if (!lim) return null;
+      const after = before - old + usdNow;
+      const p0 = (before / lim) * 100;
+      const p1 = (after / lim) * 100;
+      if (!((p0 < 80 && p1 >= 80) || (p0 <= 100 && p1 > 100))) return null;
+      const over = p1 > 100;
+      return [
+        `${label} · ${Math.round(p1)}% of budget${over ? ` · ${money.B(after - lim)} over` : ''}`,
+        { icon: over ? 'error' : 'donut_large', color: over ? 'var(--red)' : '#ff9f0a' },
+      ] as [string, ToastIcon];
+    };
+    const c = catOf(cat);
+    const oldCat = wasThisMonth && edit && catOf(edit.category) === c ? (edit.usd ?? 0) : 0;
+    const oldAll = wasThisMonth && edit ? (edit.usd ?? 0) : 0;
+    return (
+      check(c, view.budgets.cats[c], new Map(m.cats).get(c) ?? 0, oldCat) ??
+      check('All spending', view.budgets.total, m.spent, oldAll)
+    );
   }
 
   function save() {
@@ -141,6 +158,9 @@ export function TxSheet({
       category: kind === 'income' ? view.income : category,
       note: note.trim(),
     };
+    // work out the budget warning against the data before this change
+    const cat = tx.category || ruleFor(view.rules, tx.merchant)?.cat || 'Other';
+    const b = budgetToast(cat, money.toUsd(n, currency));
     if (edit) enqueue({ action: 'update', id: edit.id, tx });
     else enqueue({ action: 'add', tx });
     nav.close();
@@ -151,10 +171,9 @@ export function TxSheet({
         undefined,
         { icon: 'rule', color: 'var(--text)' },
       );
+      if (b) setTimeout(() => nav.toast(b[0], undefined, b[1]), 2600);
       return;
     }
-    const cat = tx.category || ruleFor(view.rules, tx.merchant)?.cat || '';
-    const b = budgetToast(cat, money.toUsd(n, currency));
     if (b) return nav.toast(b[0], undefined, b[1]);
     nav.toast(
       info.mode === 'offline'

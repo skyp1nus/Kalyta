@@ -131,7 +131,8 @@ function handleApi(body) {
   if (action === 'data') return { ok: true, data: getApiData() };
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  // busy: the app keeps the entry and tries again later instead of marking it failed
+  if (!lock.tryLock(15000)) return { ok: false, retry: true, error: 'The sheet is busy, will try again' };
   let id = '';
   try {
     if (action === 'add') id = apiAdd(body.tx || {});
@@ -158,7 +159,12 @@ function handleApi(body) {
   } finally {
     lock.releaseLock();
   }
-  return { ok: true, id: id, data: getApiData() };
+  try {
+    return { ok: true, id: id, data: getApiData() };
+  } catch (err) {
+    // the change is saved; every action is safe to send again
+    return { ok: false, retry: true, error: String(err && err.message || err) };
+  }
 }
 
 function newId() {
@@ -338,7 +344,8 @@ function repairTabs() {
 
 // Case- and accent-insensitive text for matching places ("Żabka" matches "ZABKA")
 function norm(s) {
-  return clean(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // NFD doesn't split ł, so fold it by hand ("Małpka" matches "MALPKA")
+  return clean(s).replace(/ł/g, 'l').replace(/Ł/g, 'L').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 function ensureTab(name, headers) {
@@ -349,7 +356,12 @@ function ensureTab(name, headers) {
     sh.setFrozenRows(1);
   }
   const head = sh.getRange(1, 1, 1, headers.length).getValues()[0];
-  if (head.join('|') !== headers.join('|')) sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  if (head.join('|') === headers.join('|')) return sh;
+  // never overwrite row 1 if it holds data: a Rules tab made by hand may start with a rule
+  const blank = head.every(v => clean(v) === '');
+  const looksLikeRule = name === RULES_SHEET && CATEGORIES.indexOf(clean(head[1])) >= 0;
+  if (looksLikeRule) sh.insertRowBefore(1);
+  if (blank || looksLikeRule) sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
   return sh;
 }
 
@@ -468,18 +480,20 @@ function recategorize(kw, cat) {
   const sheet = getSheet();
   const n = sheet.getLastRow() - 1;
   if (n < 1) return;
-  const range = sheet.getRange(2, COL.merchant, n, COL.category - COL.merchant + 1);
-  const values = range.getValues();
+  // read the places, write back only the Category column
+  const places = sheet.getRange(2, COL.merchant, n, 1).getValues();
+  const range = sheet.getRange(2, COL.category, n, 1);
+  const cats = range.getValues();
   const k = norm(kw);
   let changed = false;
-  values.forEach(r => {
-    const cur = clean(r[COL.category - COL.merchant]);
-    if (cur !== INCOME && norm(r[0]).indexOf(k) >= 0 && cur !== cat) {
-      r[COL.category - COL.merchant] = cat;
+  cats.forEach((r, i) => {
+    const cur = clean(r[0]);
+    if (cur !== INCOME && norm(places[i][0]).indexOf(k) >= 0 && cur !== cat) {
+      r[0] = cat;
       changed = true;
     }
   });
-  if (changed) range.setValues(values);
+  if (changed) range.setValues(cats);
 }
 
 function readRules() {
@@ -582,7 +596,7 @@ function getApiData() {
 
   const acc = ss.getSheetByName(ACCOUNTS_SHEET);
   const day = d => (d instanceof Date ? Utilities.formatDate(d, tz, 'yyyy-MM-dd') : clean(d));
-  const accounts = !acc || acc.getLastRow() < 2 ? [] : acc.getRange(2, 1, acc.getLastRow() - 1, Math.min(8, Math.max(7, acc.getLastColumn()))).getValues()
+  const accounts = !acc || acc.getLastRow() < 2 ? [] : acc.getRange(2, 1, acc.getLastRow() - 1, Math.min(8, acc.getMaxColumns())).getValues()
     .filter(r => clean(r[0]))
     .map(r => ({
       name: clean(r[0]),
@@ -671,7 +685,8 @@ function autoCategory(merchant) {
   const m = norm(merchant);
   const list = sheet.getDataRange().getValues().slice(1);
   for (const [keyword, category] of list) {
-    if (keyword && m.includes(norm(keyword))) return category;
+    const k = norm(keyword);
+    if (k.length >= 2 && clean(category) && m.includes(k)) return clean(category);
   }
   return '';
 }
@@ -699,7 +714,7 @@ function nbpRate(code, date) {
   const cache = CacheService.getScriptCache();
   const key = 'nbp_' + code + '_' + to;
   const hit = cache.get(key);
-  if (hit) return Number(hit);
+  if (hit) return Number(hit) || null; // '0' = NBP had nothing a moment ago
 
   for (const table of ['a', 'b']) {
     try {
@@ -716,6 +731,8 @@ function nbpRate(code, date) {
       // network hiccup: leave blank, "Fill missing USD amounts" retries later
     }
   }
+  // don't ask NBP again on every request while it's down
+  cache.put(key, '0', 600);
   return null;
 }
 
@@ -811,13 +828,13 @@ function getAccountsSheet() {
     sh.getRange(1, 1, 1, 6).setValues([['Account', 'Type', 'Currency', 'Balance', 'Updated', BASE_CURRENCY]]).setFontWeight('bold');
     sh.setFrozenRows(1);
   }
-  if (sh.getMaxColumns() < 7) sh.insertColumnsAfter(sh.getMaxColumns(), 7 - sh.getMaxColumns());
-  if (clean(sh.getRange(1, 7).getValue()) !== 'Checked') {
+  if (sh.getMaxColumns() < 8) sh.insertColumnsAfter(sh.getMaxColumns(), 8 - sh.getMaxColumns());
+  // add the headers only to empty cells, never over the user's own columns
+  if (!clean(sh.getRange(1, 7).getValue())) {
     sh.getRange(1, 7).setValue('Checked').setFontWeight('bold');
     sh.getRange('G:G').setNumberFormat('yyyy-mm-dd hh:mm');
   }
-  if (sh.getMaxColumns() < 8) sh.insertColumnsAfter(sh.getMaxColumns(), 8 - sh.getMaxColumns());
-  if (clean(sh.getRange(1, 8).getValue()) !== 'Domain') sh.getRange(1, 8).setValue('Domain').setFontWeight('bold');
+  if (!clean(sh.getRange(1, 8).getValue())) sh.getRange(1, 8).setValue('Domain').setFontWeight('bold');
   return sh;
 }
 

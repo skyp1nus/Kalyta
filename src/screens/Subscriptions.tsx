@@ -10,6 +10,7 @@ import {
   dShort,
   findRecurring,
   monthlyFactor,
+  priceChange,
   type SubState,
   type Suggestion,
   subStates,
@@ -22,14 +23,14 @@ function SubRow({ s, view, money }: { s: SubState; view: View; money: Money }) {
   const x = s.sub;
   const meta = categoryMeta(x.category, view.income);
   const usd = money.toUsd(x.amount, x.currency);
-  const priceUp = x.prev != null && x.prev !== x.amount;
-  const diffUsd = priceUp ? money.toUsd(Math.abs(x.amount - (x.prev ?? 0)), x.currency) : null;
+  const change = priceChange(view, x);
+  const diffUsd = change ? money.toUsd(Math.abs(change.to - change.from), x.currency) : null;
   const chip: [string, string] | null = x.paused
     ? ['Paused', '']
     : s.overdue
       ? [`Expected ${dShort(s.next)} · not found`, 'err']
-      : priceUp && diffUsd != null
-        ? [`${x.amount > (x.prev ?? 0) ? '+' : '−'}${money.B(diffUsd)} since last charge`, 'warn']
+      : change && diffUsd != null
+        ? [`${change.to > change.from ? '+' : '−'}${money.B(diffUsd)} since last charge`, 'warn']
         : null;
   const op = x.paused ? 0.45 : 1;
   return (

@@ -7,6 +7,7 @@ export class ServerError extends Error {}
 
 interface ApiResponse {
   ok: boolean;
+  retry?: boolean; // busy or a hiccup after saving: send it again later
   error?: string;
   id?: string;
   data?: ServerData;
@@ -45,6 +46,7 @@ export async function callApi(
   } catch {
     throw new ServerError('The web app URL looks wrong: it returned a page instead of data');
   }
+  if (!json.ok && json.retry) throw new NetworkError(json.error || 'The sheet is busy');
   if (!json.ok || !json.data) {
     const msg =
       json.error === 'unauthorized'

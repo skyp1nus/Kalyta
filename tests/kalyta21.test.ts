@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { fmt } from '../src/lib/format';
 import { buildView } from '../src/lib/outbox';
 import { kwOf, norm, ruleFor } from '../src/lib/rules';
-import { addCadence, budgetState, effectiveNext, findRecurring, subStates } from '../src/lib/subs';
+import {
+  addCadence,
+  budgetState,
+  effectiveNext,
+  findRecurring,
+  nextOnOrAfter,
+  priceChange,
+  subStates,
+} from '../src/lib/subs';
 import type { Op, OpBody, ServerData, View } from '../src/lib/types';
 
 const tx = (id: string, date: string, amount: number, merchant: string, category: string, cur = 'PLN') =>
@@ -93,7 +101,10 @@ describe('rules', () => {
 
 describe('subscriptions', () => {
   it('adds periods', () => {
-    expect(addCadence('2026-01-31', 'monthly')).toBe('2026-03-03');
+    expect(addCadence('2026-01-31', 'monthly')).toBe('2026-02-28');
+    expect(addCadence('2026-08-31', 'monthly')).toBe('2026-09-30');
+    expect(addCadence('2028-02-29', 'yearly')).toBe('2029-02-28');
+    expect(addCadence('2026-01-31', 'monthly', 2)).toBe('2026-03-31');
     expect(addCadence('2026-10-05', 'weekly')).toBe('2026-10-12');
     expect(addCadence('2026-10-05', 'yearly')).toBe('2027-10-05');
   });
@@ -128,5 +139,86 @@ describe('budgets and privacy', () => {
   it('hides amounts but keeps the currency', () => {
     expect(fmt(656, 'USD', '', true, true)).toBe('$•••');
     expect(fmt(23.4, 'PLN', '−', true, true)).toBe('− ••• zł');
+  });
+});
+
+describe('review fixes', () => {
+  it('finds the real place behind a payment processor or an order number', () => {
+    expect(kwOf('PAYPAL *SPOTIFY')).toBe('Spotify');
+    expect(kwOf('BOLT.EU/O/2310081234')).toBe('Bolt');
+    expect(norm('MALPKA EXPRESS').includes(norm('Małpka'))).toBe(true);
+  });
+
+  it('matches short keywords like the script does', () => {
+    const v = view([op({ action: 'rule', kw: 'BP', cat: 'Transport' })]);
+    expect(ruleFor(v.rules, 'BP Stacja')?.cat).toBe('Transport');
+  });
+
+  it('lets one charge pay for one week only', () => {
+    const v = view();
+    const sub = {
+      ...v.subscriptions[0],
+      name: 'UBER ONE',
+      amount: 24.99,
+      cadence: 'weekly' as const,
+      next: '2026-09-12',
+    };
+    // the Sep 14 charge pays for Sep 12; nothing paid Sep 19 (it used to count for both)
+    expect(effectiveNext({ ...v, subscriptions: [sub] }, sub)).toBe('2026-09-19');
+  });
+
+  it('ignores charges at the same place with a very different price', () => {
+    const v = view();
+    const sub = { ...v.subscriptions[0], name: 'Uber', amount: 100, next: '2026-09-14' };
+    expect(effectiveNext({ ...v, subscriptions: [sub] }, sub)).toBe('2026-09-14');
+  });
+
+  it('moves a resumed subscription to its next date', () => {
+    expect(nextOnOrAfter('2026-05-10', 'monthly', '2026-10-07')).toBe('2026-10-10');
+    expect(nextOnOrAfter('2026-10-10', 'monthly', '2026-10-07')).toBe('2026-10-10');
+  });
+
+  it('does not take a weekly grocery run for a subscription', () => {
+    const shop = (id: string, d: string, a: number) => tx(id, `${d}T18:00`, a, 'BIEDRONKA 123', 'Food');
+    const v = buildView(
+      {
+        ...server,
+        tx: [
+          shop('g1', '2026-09-16', 80),
+          shop('g2', '2026-09-23', 87),
+          shop('g3', '2026-09-30', 94),
+          shop('g4', '2026-10-07', 90),
+        ],
+      },
+      [],
+    );
+    if (!v) throw new Error('no view');
+    expect(findRecurring({ ...v, today: '2026-10-07' }, []).filter((x) => x.id === 'biedronka')).toHaveLength(
+      0,
+    );
+  });
+
+  it('finds yearly charges', () => {
+    const v = buildView(
+      {
+        ...server,
+        tx: [
+          tx('y1', '2025-10-20T10:00', 199, 'ICLOUD', 'Subscriptions'),
+          tx('y2', '2026-10-20T10:00', 199, 'ICLOUD', 'Subscriptions'),
+        ],
+      },
+      [],
+    );
+    if (!v) throw new Error('no view');
+    const s = findRecurring({ ...v, today: '2026-10-21' }, []);
+    expect(s[0]).toMatchObject({ cadence: 'yearly', next: '2027-10-20' });
+  });
+
+  it('shows a price change until the next charge at the same price', () => {
+    const v = view();
+    const sub = { ...v.subscriptions[0], name: 'UBER ONE', amount: 29.99, prev: 24.99, next: '2026-10-14' };
+    expect(priceChange(v, sub)).toBeNull(); // the last two charges were the same price
+    const fresh = { ...sub, name: 'Netflix' };
+    expect(priceChange(v, fresh)).toEqual({ from: 24.99, to: 29.99 }); // no charges yet: what was typed in
   });
 });

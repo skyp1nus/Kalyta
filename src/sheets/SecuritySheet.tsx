@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dots, Keypad } from '../components/Keypad';
 import { CircleButton, Icon, Segmented, Toggle } from '../components/ui';
 import { type AutoLock, getPrefs, setPrefs, usePrefs } from '../lib/prefs';
-import { enrollFaceId, setPasscode, turnLockOff } from '../lib/privacy';
+import { confirmWithLock, enrollFaceId, faceIdAvailable, setPasscode, turnLockOff } from '../lib/privacy';
 import { useNav } from '../nav';
 import { SheetHead } from './common';
 
@@ -40,10 +40,12 @@ export function SecuritySheet() {
       label: 'App lock',
       toggle: p.lockOn,
       onClick: () => {
-        if (p.lockOn) {
-          turnLockOff();
-          nav.toast('App lock turned off');
-        } else nav.open({ kind: 'lockSetup', step: 'method' });
+        if (p.lockOn)
+          confirmWithLock('Turn off App lock', () => {
+            turnLockOff();
+            nav.toast('App lock turned off');
+          });
+        else nav.open({ kind: 'lockSetup', step: 'method' });
       },
     },
     ...(p.lockOn
@@ -52,12 +54,16 @@ export function SecuritySheet() {
             icon: p.lockMethod === 'face' ? 'face' : 'pin',
             label: 'Unlock with',
             value: p.lockMethod === 'face' ? 'Face ID' : 'Passcode',
-            onClick: () => nav.open({ kind: 'lockSetup', step: 'method' }),
+            onClick: () =>
+              confirmWithLock('Change how you unlock', () => nav.open({ kind: 'lockSetup', step: 'method' })),
           },
           {
             icon: 'password',
             label: 'Change passcode',
-            onClick: () => nav.open({ kind: 'lockSetup', step: 'enter', change: true }),
+            onClick: () =>
+              confirmWithLock('Change passcode', () =>
+                nav.open({ kind: 'lockSetup', step: 'enter', change: true }),
+              ),
           },
         ]
       : []),
@@ -178,6 +184,21 @@ export function LockSetupSheet({
   const [msg, setMsg] = useState('');
   const [shake, setShake] = useState(0);
   const [scan, setScan] = useState<0 | 1 | 2>(0);
+  const [faceOk, setFaceOk] = useState(true);
+  const busy = useRef(false);
+
+  // don't offer Face ID where there's no passkey support
+  useEffect(() => {
+    let live = true;
+    void faceIdAvailable().then((ok) => {
+      if (!live || ok) return;
+      setFaceOk(false);
+      setMethod('passcode');
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   async function finish(m: 'face' | 'passcode', pass: string) {
     if (pass) await setPasscode(pass);
@@ -192,12 +213,14 @@ export function LockSetupSheet({
   }
 
   function digit(d: string) {
-    if (code.length >= 6) return;
+    if (busy.current || code.length >= 6) return;
     const c = code + d;
     setCode(c);
     setMsg('');
     if (c.length < 6) return;
+    busy.current = true;
     setTimeout(() => {
+      busy.current = false;
       if (step === 'enter') {
         setFirst(c);
         setCode('');
@@ -219,8 +242,13 @@ export function LockSetupSheet({
   async function enableFace() {
     if (scan) return;
     setScan(1);
-    const ok = await enrollFaceId();
-    if (!ok) {
+    const res = await enrollFaceId();
+    if (res === 'cancelled') {
+      setScan(0);
+      nav.toast('Face ID was cancelled', undefined, { icon: 'face', color: 'var(--text)' });
+      return;
+    }
+    if (res === 'unavailable') {
       setScan(0);
       nav.toast('Face ID isn’t available here. Using the passcode.', undefined, {
         icon: 'pin',
@@ -302,7 +330,11 @@ export function LockSetupSheet({
                 type="button"
                 className="method-card"
                 aria-pressed={method === k}
-                style={{ borderColor: method === k ? 'var(--text)' : 'transparent' }}
+                disabled={k === 'face' && !faceOk}
+                style={{
+                  borderColor: method === k ? 'var(--text)' : 'transparent',
+                  opacity: k === 'face' && !faceOk ? 0.45 : 1,
+                }}
                 onClick={() => setMethod(k)}
               >
                 <span className="mic">
@@ -372,7 +404,7 @@ export function LockSetupSheet({
             <Dots filled={code.length} shake={shake} />
           </div>
           <div style={{ marginTop: 34 }}>
-            <Keypad onDigit={digit} onDelete={() => setCode((c) => c.slice(0, -1))} />
+            <Keypad onDigit={digit} onDelete={() => !busy.current && setCode((c) => c.slice(0, -1))} />
           </div>
         </div>
       )}

@@ -15,8 +15,10 @@ export interface Prefs {
   lockOn: boolean;
   lockMethod: 'face' | 'passcode';
   autoLock: AutoLock;
-  passHash: string; // SHA-256 of salt + passcode
+  passHash: string; // pbkdf2$<iterations>$<hex> (2.1 stored a single SHA-256)
   passSalt: string;
+  passFails: number; // wrong passcodes in a row
+  passWaitUntil: number; // no passcode attempts before this time (ms)
   credId: string; // WebAuthn credential for Face ID
   hide: boolean; // show amounts as •••
   blurSw: boolean; // cover the app in the app switcher
@@ -38,6 +40,8 @@ const DEFAULTS: Prefs = {
   autoLock: '1 min',
   passHash: '',
   passSalt: '',
+  passFails: 0,
+  passWaitUntil: 0,
   credId: '',
   hide: false,
   blurSw: true,

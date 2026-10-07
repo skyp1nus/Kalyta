@@ -1,10 +1,10 @@
-import { type PointerEvent, useRef, useState } from 'react';
+import { type PointerEvent, useEffect, useRef, useState } from 'react';
 import { Icon, Toggle } from '../components/ui';
 import { txInputOf } from '../lib/entries';
 import { dayHeading, time } from '../lib/format';
 import { CATEGORY_META } from '../lib/meta';
 import { useMoney } from '../lib/money';
-import { kwOf, needsReview, norm } from '../lib/rules';
+import { kwOf, needsReview, norm, placeMatches } from '../lib/rules';
 import { enqueue } from '../lib/store';
 import type { View } from '../lib/types';
 import { useNav } from '../nav';
@@ -29,8 +29,18 @@ export function ReviewSheet({ view }: { view: View }) {
   const card = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
   const drag = useRef<{ x: number; dx: number; moved: boolean } | null>(null);
+  // cards already sorted along with another one ("Remember" for the same place)
+  const handled = useRef(new Set<string>());
 
   const t = view.tx.find((x) => x.id === list[i]);
+
+  // the record went away (deleted on another device): move on instead of showing "Done"
+  useEffect(() => {
+    if (done || t || !list.length) return;
+    const ni = list.findIndex((id, k) => k > i && view.tx.some((x) => x.id === id));
+    if (ni < 0) setDone(true);
+    else setI(ni);
+  }, [done, t, list, i, view.tx]);
   const acc = t ? view.accounts.find((a) => a.name === t.account) : undefined;
   const left = view.tx.filter(needsReview).length;
 
@@ -43,7 +53,8 @@ export function ReviewSheet({ view }: { view: View }) {
 
   // fly out one way, bring the next card in from the other side
   function go(dir: 1 | -1) {
-    const ni = i + dir;
+    let ni = i + dir;
+    while (ni >= 0 && ni < list.length && handled.current.has(list[ni])) ni += dir;
     if (ni < 0) return place(0, `transform .35s ${EASE}`);
     busy.current = true;
     place(-dir * 440, 'transform .28s ease-in');
@@ -65,7 +76,26 @@ export function ReviewSheet({ view }: { view: View }) {
     const kw = kwOf(t.merchant);
     const addRule = remember && kw.trim().length >= 2 && !view.rules.some((r) => norm(r.kw) === norm(kw));
     if (addRule) enqueue({ action: 'rule', kw, cat });
-    setStats((s) => ({ n: s.n + 1, r: s.r + (addRule ? 1 : 0) }));
+    // the other cards for the same place get the same category
+    let more = 0;
+    if (remember && kw.trim().length >= 2) {
+      for (const id of list) {
+        const x = view.tx.find((y) => y.id === id);
+        if (
+          !x ||
+          x.id === t.id ||
+          handled.current.has(id) ||
+          !needsReview(x) ||
+          !placeMatches(kw, x.merchant)
+        )
+          continue;
+        enqueue({ action: 'update', id: x.id, tx: txInputOf(x, view, { category: cat }) });
+        handled.current.add(id);
+        more++;
+      }
+    }
+    handled.current.add(t.id);
+    setStats((s) => ({ n: s.n + 1 + more, r: s.r + (addRule ? 1 : 0) }));
     go(1);
   }
 

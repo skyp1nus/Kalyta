@@ -13,6 +13,8 @@ import {
   dShort,
   dWeekday,
   effectiveNext,
+  nextOnOrAfter,
+  priceChange,
 } from '../lib/subs';
 import { syncInfo } from '../lib/syncState';
 import type { Cadence, Subscription, View } from '../lib/types';
@@ -58,6 +60,7 @@ export function SubSheet({
   const accountRow = view.accounts.find((a) => a.name === account);
 
   const past = useMemo(() => (edit ? chargesOf(view, edit).slice(0, 5) : []), [view, edit]);
+  const change = useMemo(() => (edit ? priceChange(view, edit) : null), [view, edit]);
 
   const write = (patch: Partial<Subscription>, base?: Subscription) => {
     const s = base ?? edit;
@@ -163,14 +166,14 @@ export function SubSheet({
         </div>
       </Notice>
     );
-  } else if (edit && edit.prev != null && edit.prev !== edit.amount) {
-    const d = money.toUsd(edit.amount - edit.prev, edit.currency) ?? 0;
+  } else if (change) {
+    const d = money.toUsd(change.to - change.from, edit?.currency ?? 'USD') ?? 0;
     notice = (
       <Notice
         icon="trending_up"
         color="#ff9f0a"
         title={`Price went ${d >= 0 ? 'up' : 'down'} by ${money.B(Math.abs(d))}`}
-        text={`Was ${money.n(edit.prev, edit.currency)} until the last charge. Now ${money.n(edit.amount, edit.currency)}.`}
+        text={`Was ${money.n(change.from, edit?.currency ?? '')} until the last charge. Now ${money.n(change.to, edit?.currency ?? '')}.`}
       />
     );
   }
@@ -301,7 +304,12 @@ export function SubSheet({
               type="button"
               className="set-row tap"
               onClick={() => {
-                write({ paused: !edit.paused });
+                // a resumed subscription starts from its next date, not from where it was paused
+                write(
+                  edit.paused
+                    ? { paused: false, next: nextOnOrAfter(edit.next, edit.cadence, view.today) }
+                    : { paused: true },
+                );
                 nav.close();
                 nav.toast(
                   edit.paused ? `${edit.name} resumed` : `${edit.name} paused · not counted in totals`,

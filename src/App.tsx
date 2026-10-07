@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Cover, LockScreen, Reloading } from './components/Overlays';
 import { Icon } from './components/ui';
 import { getPrefs, usePrefs } from './lib/prefs';
-import { setPeek } from './lib/privacy';
+import { isLocked, setPeek, usePrivacy } from './lib/privacy';
 import { useStore, useView } from './lib/store';
 import { launchNotice, useUpdate } from './lib/update';
 import { type Nav, NavContext, type Screen, type SheetSpec, type ToastIcon } from './nav';
@@ -122,6 +122,9 @@ function useTouchDrag(
 export function App() {
   const s = useStore();
   const view = useView();
+  const privacy = usePrivacy();
+  const { lockOn } = usePrefs();
+  const lockedNow = privacy.locked && lockOn && !!s.settings;
   useThemeAttr();
 
   // ----- screen stack -----
@@ -217,17 +220,21 @@ export function App() {
 
   // "What's new" once after an update, "Ready to work offline" after the first install
   const upd = useUpdate();
-  const notice = useRef<ReturnType<typeof launchNotice> | undefined>(undefined);
+  const [notice, setNotice] = useState<ReturnType<typeof launchNotice> | undefined>(undefined);
   useEffect(() => {
-    if (!view || notice.current !== undefined) return;
-    notice.current = launchNotice();
-    if (notice.current === 'whatsnew') setTimeout(() => open({ kind: 'whatsnew' }), 600);
-  }, [view, open]);
+    if (!view || notice !== undefined) return;
+    const n = launchNotice();
+    setNotice(n);
+    if (n === 'whatsnew') setTimeout(() => open({ kind: 'whatsnew' }), 600);
+  }, [view, open, notice]);
+  // the service worker may finish caching before onboarding is done
+  const offlineToast = useRef(false);
   useEffect(() => {
-    if (upd.offlineReady && notice.current === 'installed') {
+    if (upd.offlineReady && notice === 'installed' && !offlineToast.current) {
+      offlineToast.current = true;
       toast('Ready to work offline', undefined, { icon: 'offline_pin', color: 'var(--green)' });
     }
-  }, [upd.offlineReady, toast]);
+  }, [upd.offlineReady, notice, toast]);
 
   // Hide amounts: touch and hold anywhere to peek
   useEffect(() => {
@@ -236,7 +243,8 @@ export function App() {
     let peeked = false;
     const down = (e: PointerEvent) => {
       peeked = false;
-      if (!getPrefs().hide) return;
+      if (!getPrefs().hide || isLocked()) return;
+      if ((e.target as Element | null)?.closest?.('.keypad, .lock-screen')) return;
       start = { x: e.clientX, y: e.clientY };
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -279,7 +287,7 @@ export function App() {
   // Escape closes the sheet, then goes back
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || isLocked()) return;
       if (sheetOn) close();
       else pop();
     };
@@ -422,7 +430,7 @@ export function App() {
 
   return (
     <NavContext.Provider value={nav}>
-      <div className="app" ref={appRef} inert={sheetOn || !s.settings}>
+      <div className="app" ref={appRef} inert={sheetOn || !s.settings || lockedNow} aria-hidden={lockedNow}>
         {layers.map(({ layer, pos }, i) => (
           <StackLayer
             key={layer.id}
@@ -446,8 +454,8 @@ export function App() {
         className={`sheet ${sheetOn ? 'on' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-hidden={!sheetOn}
-        inert={!sheetOn}
+        aria-hidden={!sheetOn || lockedNow}
+        inert={!sheetOn || lockedNow}
       >
         <div className="tint" style={{ background: tint }} />
         <div className="grabber" />
@@ -463,7 +471,12 @@ export function App() {
       <Cover />
       <Reloading />
 
-      <div className={`toast-wrap ${toastState.on ? 'on' : ''}`} role="status" aria-live="polite">
+      <div
+        className={`toast-wrap ${toastState.on && !lockedNow && !privacy.cover ? 'on' : ''}`}
+        role="status"
+        aria-live="polite"
+        inert={lockedNow || privacy.cover}
+      >
         <div className={`toast ${toastState.undo ? 'has-undo' : ''}`}>
           {toastState.icon && (
             <Icon

@@ -1206,6 +1206,7 @@ button.row:active,
   display: flex;
   flex-direction: column;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .stat .st {
@@ -1222,7 +1223,8 @@ button.row:active,
 }
 
 .stat .sv {
-  font-size: 28px;
+  /* shrink long amounts ("+ $2,834.62") to fit the tile on narrow phones */
+  font-size: min(28px, 15.5cqi);
   font-weight: 700;
   letter-spacing: -0.6px;
   margin-top: 6px;
@@ -2744,7 +2746,7 @@ button.row:active,
   flex-direction: column;
   align-items: center;
   overflow-y: auto;
-  animation: fadein 0.2s ease-out;
+  /* no fade-in: balances must never show through on launch or resume */
 }
 
 @keyframes fadein {
@@ -2825,7 +2827,8 @@ button.row:active,
     visibility 0s 0.25s;
 }
 
-.app-cover.on {
+.app-cover.on,
+html.covered .app-cover {
   opacity: 1;
   visibility: visible;
   transition: none;

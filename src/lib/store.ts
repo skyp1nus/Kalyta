@@ -92,6 +92,17 @@ export function discardOp(opId: string) {
   set({ outbox: state.outbox.filter((o) => o.opId !== opId) });
 }
 
+// Removes queued ops (and gives them back for "Undo")
+export function takeOps(pred: (o: Op) => boolean): Op[] {
+  const taken = state.outbox.filter(pred);
+  if (taken.length) set({ outbox: state.outbox.filter((o) => !pred(o)) });
+  return taken;
+}
+
+export function putBackOps(ops: Op[]) {
+  set({ outbox: [...state.outbox, ...ops] });
+}
+
 export function retryOp(opId: string) {
   set({ outbox: state.outbox.map((o) => (o.opId === opId ? { ...o, error: undefined } : o)) });
   void sync();
@@ -132,6 +143,8 @@ export async function sync(): Promise<void> {
     return;
   }
   running = true;
+  // the device was disconnected (or reconnected) while a request was out: drop its result
+  const stale = () => state.settings !== settings;
   set({ syncing: true });
   try {
     let fresh = false;
@@ -139,13 +152,15 @@ export async function sync(): Promise<void> {
     for (const op of state.outbox) {
       if (op.error) continue;
       if (op.notBefore && op.notBefore > Date.now()) {
-        held = Math.min(held, op.notBefore);
-        continue;
+        // keep the order: later ops may depend on this one (a balance check after a delete)
+        held = op.notBefore;
+        break;
       }
       if (!state.outbox.some((o) => o.opId === op.opId)) continue; // undone while we were sending
       const { opId, createdAt: _c, error: _e, notBefore: _n, ...body } = op;
       try {
         const data = await callApi(settings, body as OpBody);
+        if (stale()) return;
         set({
           server: data,
           outbox: state.outbox.filter((o) => o.opId !== opId),
@@ -154,6 +169,7 @@ export async function sync(): Promise<void> {
         });
         fresh = true;
       } catch (err) {
+        if (stale()) return;
         if (err instanceof ServerError) {
           set({ outbox: state.outbox.map((o) => (o.opId === opId ? { ...o, error: err.message } : o)) });
           continue;
@@ -164,6 +180,7 @@ export async function sync(): Promise<void> {
     }
     if (!fresh) {
       const data = await callApi(settings, { action: 'data' });
+      if (stale()) return;
       set({ server: data, online: true, lastError: null });
     }
     set({ lastSync: Date.now() });
@@ -172,6 +189,7 @@ export async function sync(): Promise<void> {
       wake = setTimeout(() => void sync(), held - Date.now() + 50);
     }
   } catch (err) {
+    if (stale()) return;
     set({ online: err instanceof NetworkError ? false : state.online, lastError: (err as Error).message });
   } finally {
     running = false;

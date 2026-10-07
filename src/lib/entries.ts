@@ -1,8 +1,8 @@
 import { time } from './format';
 import { ADJUST_META, categoryMeta, TRANSFER_META } from './meta';
 import type { Money } from './money';
-import { discardOp, enqueue } from './store';
-import type { Adjustment, Transfer, Tx, TxInput, View } from './types';
+import { discardOp, enqueue, getState, putBackOps, takeOps } from './store';
+import type { Adjustment, Op, Transfer, Tx, TxInput, View } from './types';
 
 // Everything that shows up in a list of records
 export type Entry =
@@ -90,6 +90,25 @@ const HOLD = 4500;
 
 // Queues the delete but holds it back long enough for "Undo"; returns the function that undoes it
 export function deleteEntry(e: Entry): () => void {
+  // never reached the sheet because the sheet refused it: drop it from the queue instead of
+  // sending a delete (which would leave the failed add behind, and "Retry all" would create it)
+  const id = e.t.id;
+  const s = getState();
+  const onServer =
+    e.kind === 'tx'
+      ? !!s.server?.tx.some((r) => r[0] === id)
+      : e.kind === 'transfer'
+        ? !!s.server?.transfers.some((r) => r[0] === id)
+        : !!s.server?.adjustments?.some((r) => r[0] === id);
+  const refs = (o: Op) =>
+    ('id' in o && o.id === id) ||
+    (o.action === 'add' && o.tx.id === id) ||
+    (o.action === 'transfer' && o.tr.id === id);
+  const mine = s.outbox.filter(refs);
+  if (!onServer && mine.length && mine.every((o) => o.error)) {
+    const taken = takeOps(refs);
+    return () => putBackOps(taken);
+  }
   const body =
     e.kind === 'tx'
       ? { action: 'delete' as const, id: e.t.id }
