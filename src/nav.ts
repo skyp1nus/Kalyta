@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { Rule, Subscription, Transfer, Tx } from './lib/types';
+import type { AccountType, Rule, Subscription, Transfer, Tx } from './lib/types';
 
 export type Screen =
   | { name: 'home' }
@@ -25,7 +25,8 @@ export type SheetSpec =
   | { kind: 'whatsnew' }
   | { kind: 'security' }
   | { kind: 'lockSetup'; step?: 'method' | 'enter'; change?: boolean }
-  | { kind: 'logo'; account: string };
+  | { kind: 'logo'; account: string }
+  | { kind: 'newAccount'; type?: AccountType };
 
 export interface ToastIcon {
   icon: string;

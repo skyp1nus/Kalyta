@@ -3,7 +3,7 @@ import { toCsv } from '../src/lib/csv';
 import { dayHeading, fmt } from '../src/lib/format';
 import { accountGroup } from '../src/lib/meta';
 import { makeMoney } from '../src/lib/money';
-import { buildView } from '../src/lib/outbox';
+import { buildView, localToday } from '../src/lib/outbox';
 import { comparison, monthSummary, weekSpending } from '../src/lib/stats';
 import type { Op, OpBody, ServerData, View } from '../src/lib/types';
 
@@ -85,7 +85,8 @@ describe('balance adjustments', () => {
     expect(adj?.change).toBe(-10);
     expect(adj?.pending).toBe(true);
     expect(balance(v, 'Cash')).toBe(90);
-    expect(v.accounts.find((a) => a.name === 'Cash')?.checked).toBe(v.today);
+    // the check is stamped with the real date, not the fixture's "today"
+    expect(v.accounts.find((a) => a.name === 'Cash')?.checked).toBe(localToday());
   });
 
   it('a plain check logs nothing', () => {

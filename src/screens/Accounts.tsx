@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Avatar, BackButton, Icon } from '../components/ui';
+import { Avatar, BackButton, CircleButton, EmptyState, Icon } from '../components/ui';
 import { accountGroup, accountLook, GROUPS, isDebt } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { netWorth } from '../lib/stats';
@@ -50,9 +50,13 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
           </div>
 
           {view.accounts.length === 0 && (
-            <p style={{ margin: '40px 28px', color: 'var(--text2)', fontSize: 16, lineHeight: 1.4 }}>
-              Add accounts on the Accounts tab of your Sheet, then tap Sync now in Settings.
-            </p>
+            <EmptyState
+              icon="account_balance_wallet"
+              title="No accounts yet"
+              text="Add your cards, cash, exchanges and the money people owe you."
+              action="Add account"
+              onAction={() => nav.open({ kind: 'newAccount' })}
+            />
           )}
 
           {GROUPS.map((g) => {
@@ -62,6 +66,17 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
               <section key={g} aria-label={g}>
                 <div className="section-head" style={{ margin: '28px 24px 10px' }}>
                   <h2>{g}</h2>
+                  {(g === 'Owed to you' || g === 'Debts') && (
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() =>
+                        nav.open({ kind: 'newAccount', type: g === 'Debts' ? 'You owe' : 'Owed to you' })
+                      }
+                    >
+                      Add
+                    </button>
+                  )}
                 </div>
                 <div className="group">
                   {rows.map((a, i) => (
@@ -96,6 +111,12 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
       </div>
       <div className="topbar">
         <BackButton onClick={nav.pop} />
+        <CircleButton
+          icon="add"
+          label="Add account"
+          iconSize={28}
+          onClick={() => nav.open({ kind: 'newAccount' })}
+        />
       </div>
     </>
   );

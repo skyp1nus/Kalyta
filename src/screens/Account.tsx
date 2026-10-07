@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useOpenEntry } from '../components/hooks';
 import { EntryRow } from '../components/rows';
 import { Avatar, BackButton, Icon, SectionHead } from '../components/ui';
@@ -6,8 +6,10 @@ import { allEntries, touchesAccount } from '../lib/entries';
 import { MONTHS, shortDate } from '../lib/format';
 import { accountGroup, accountLook, isDebt, isPerson } from '../lib/meta';
 import { useMoney } from '../lib/money';
+import { discardOp, enqueue } from '../lib/store';
 import type { View } from '../lib/types';
 import { useNav } from '../nav';
+import { DeleteButton } from '../sheets/common';
 
 export const AccountScreen = memo(function AccountScreen({ view, name }: { view: View; name: string }) {
   const nav = useNav();
@@ -15,6 +17,7 @@ export const AccountScreen = memo(function AccountScreen({ view, name }: { view:
   const openEntry = useOpenEntry();
   const a = view.accounts.find((x) => x.name.toLowerCase() === name.toLowerCase());
   const mine = useMemo(() => allEntries(view).filter((e) => touchesAccount(e, name)), [view, name]);
+  const [armed, setArmed] = useState(false);
 
   if (!a) {
     return (
@@ -144,6 +147,25 @@ export const AccountScreen = memo(function AccountScreen({ view, name }: { view:
                 <EntryRow entry={e} view={view} money={money} onOpen={openEntry} />
               </div>
             ))}
+          </div>
+
+          <div style={{ margin: '28px 20px 0' }}>
+            <DeleteButton
+              armed={armed}
+              label={isPerson(a.type) ? 'Remove from debts' : 'Delete account'}
+              onClick={() => {
+                if (!armed) return setArmed(true);
+                // held back a few seconds so Undo can take it back
+                const opId = enqueue({ action: 'deleteAccount', account: a.name }, 4500);
+                nav.pop();
+                nav.toast(`${a.name} deleted`, () => discardOp(opId));
+              }}
+            />
+            <div className="sheet-note" style={{ margin: '10px 8px 0', textAlign: 'center' }}>
+              {mine.length
+                ? `Its ${mine.length === 1 ? 'record stays' : 'records stay'} in your Sheet under “${a.name}”.`
+                : 'Removes it from the Accounts tab of your Sheet.'}
+            </div>
           </div>
         </div>
       </div>

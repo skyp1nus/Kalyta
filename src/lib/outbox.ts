@@ -243,6 +243,31 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
       case 'deleteRule':
         if (!failed) view.rules = view.rules.filter((r) => norm(r.kw) !== norm(op.kw));
         break;
+      case 'addAccount': {
+        const acc = op.acc;
+        if (failed || view.accounts.some((x) => x.name.toLowerCase() === acc.name.toLowerCase())) break;
+        const n = parseAmount(acc.balance || '0');
+        const balance = Number.isFinite(n) ? n : 0;
+        const rate = view.rates[acc.currency] ?? usdRate(acc.currency, view.tx, view.accounts);
+        const day = view.today;
+        view.accounts.push({
+          name: acc.name,
+          type: acc.type,
+          currency: acc.currency,
+          balance,
+          updated: day,
+          checked: day,
+          domain: acc.domain,
+          // "You owe" counts against net worth, like the USD formula in the sheet
+          usd:
+            rate == null ? null : Math.round(balance * rate * (acc.type === 'You owe' ? -1 : 1) * 100) / 100,
+        });
+        break;
+      }
+      case 'deleteAccount':
+        if (!failed)
+          view.accounts = view.accounts.filter((x) => x.name.toLowerCase() !== op.account.toLowerCase());
+        break;
       case 'accountDomain': {
         const a = view.accounts.find((x) => x.name === op.account);
         if (a && !failed) a.domain = op.domain;

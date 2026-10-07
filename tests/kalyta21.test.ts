@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fmt } from '../src/lib/format';
+import { accountDomain } from '../src/lib/meta';
 import { buildView } from '../src/lib/outbox';
 import { kwOf, norm, ruleFor } from '../src/lib/rules';
 import {
@@ -220,5 +221,44 @@ describe('review fixes', () => {
     expect(priceChange(v, sub)).toBeNull(); // the last two charges were the same price
     const fresh = { ...sub, name: 'Netflix' };
     expect(priceChange(v, fresh)).toEqual({ from: 24.99, to: 29.99 }); // no charges yet: what was typed in
+  });
+});
+
+describe('accounts from the app', () => {
+  it('shows a new account right away, debts count against net worth', () => {
+    const v = view([
+      op({
+        action: 'addAccount',
+        acc: { name: 'Bybit', type: 'Account', currency: 'USDT', balance: '50', domain: 'bybit.com' },
+      }),
+      op({
+        action: 'addAccount',
+        acc: { name: 'Alex', type: 'You owe', currency: 'USD', balance: '20', domain: '' },
+      }),
+    ]);
+    expect(v.accounts.find((a) => a.name === 'Bybit')).toMatchObject({
+      balance: 50,
+      usd: 50,
+      domain: 'bybit.com',
+    });
+    expect(v.accounts.find((a) => a.name === 'Alex')?.usd).toBe(-20);
+  });
+
+  it('does not add the same name twice and removes deleted accounts', () => {
+    const v = view([
+      op({
+        action: 'addAccount',
+        acc: { name: 'revolut', type: 'Account', currency: 'PLN', balance: '1', domain: '' },
+      }),
+    ]);
+    expect(v.accounts.filter((a) => a.name.toLowerCase() === 'revolut')).toHaveLength(1);
+    expect(view([op({ action: 'deleteAccount', account: 'Revolut' })]).accounts).toHaveLength(0);
+  });
+
+  it('finds logos for known banks by name', () => {
+    expect(accountDomain('mono black')).toBe('monobank.ua');
+    expect(accountDomain('ING konto')).toBe('ing.pl');
+    expect(accountDomain('Shopping')).toBe('');
+    expect(accountDomain('Anything', 'example.com')).toBe('example.com');
   });
 });

@@ -149,6 +149,8 @@ function handleApi(body) {
     else if (action === 'rule') saveRule(clean(body.kw), clean(body.cat), !!body.past, clean(body.replaces));
     else if (action === 'deleteRule') deleteRule(clean(body.kw));
     else if (action === 'accountDomain') setAccountDomain(clean(body.account), clean(body.domain));
+    else if (action === 'addAccount') id = apiAddAccount(body.acc || {});
+    else if (action === 'deleteAccount') id = apiDeleteAccount(clean(body.account));
     else if (action === 'balance') {
       if (!clean(body.account)) throw new Error('Pick an account');
       id = clean(body.id) || newId();
@@ -502,6 +504,43 @@ function readRules() {
   return rows(sh, 2).filter(r => clean(r[0]) && clean(r[1])).map(r => [clean(r[0]), clean(r[1])]);
 }
 
+const ACCOUNT_TYPES = ['Account', 'Owed to you', 'You owe'];
+
+// New account, card or debt from the app; a retry of the same request changes nothing
+function apiAddAccount(a) {
+  const name = clean(a.name);
+  if (!name) throw new Error('Enter a name');
+  const type = ACCOUNT_TYPES.indexOf(clean(a.type)) >= 0 ? clean(a.type) : 'Account';
+  const cur = clean(a.currency).toUpperCase() || LOCAL_CURRENCY;
+  const raw = clean(a.balance);
+  const balance = raw === '' ? 0 : parseAmount(raw).amount;
+  if (balance === '' || isNaN(Number(balance))) throw new Error('Balance is not a number');
+  const sh = getAccountsSheet();
+  const existing = accountRow(name);
+  if (existing > 0) {
+    const r = sh.getRange(existing, 2, 1, 2).getValues()[0];
+    if (clean(r[0]) === type && clean(r[1]).toUpperCase() === cur) return name;
+    throw new Error('There is already an account named ' + name);
+  }
+  const row = sh.getLastRow() + 1;
+  const now = new Date();
+  sh.getRange(row, 1, 1, 5).setValues([[name, type, cur, Number(balance), now]]);
+  sh.getRange(row, 6).setFormula(accountUsdFormula(row));
+  sh.getRange(row, 7).setValue(now);
+  const domain = clean(a.domain).replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+  if (domain) sh.getRange(row, 8).setValue(domain);
+  getHistorySheet().appendRow([now, name, Number(balance), cur, 0, 'check', newId()]);
+  return name;
+}
+
+// Removes the account row; its records stay in Expenses and Transfers under the same name
+function apiDeleteAccount(name) {
+  if (!name) throw new Error('Pick an account');
+  const row = accountRow(name);
+  if (row > 0) getAccountsSheet().deleteRow(row);
+  return name;
+}
+
 function setAccountDomain(name, domain) {
   const row = accountRow(name);
   if (row < 0) throw new Error('Account not found');
@@ -816,7 +855,11 @@ function currentRates() {
 
 // USD value of an account row; "You owe" counts as negative
 function accountUsdFormula(row) {
-  return '=IF(D' + row + '="", "", IF(B' + row + '="You owe", -1, 1)*IF(C' + row + '="' + BASE_CURRENCY + '", D' + row +
+  // stablecoins are dollars; GOOGLEFINANCE doesn't know them
+  const same = BASE_CURRENCY === 'USD'
+    ? 'OR(C' + row + '="USD", C' + row + '="USDT", C' + row + '="USDC")'
+    : 'C' + row + '="' + BASE_CURRENCY + '"';
+  return '=IF(D' + row + '="", "", IF(B' + row + '="You owe", -1, 1)*IF(' + same + ', D' + row +
     ', D' + row + '*GOOGLEFINANCE("CURRENCY:"&C' + row + '&"' + BASE_CURRENCY + '")))';
 }
 

@@ -163,7 +163,20 @@ export type OpBody =
   | { action: 'deleteSubscription'; id: string }
   | { action: 'rule'; kw: string; cat: string; past?: boolean; replaces?: string }
   | { action: 'deleteRule'; kw: string }
-  | { action: 'accountDomain'; account: string; domain: string };
+  | { action: 'accountDomain'; account: string; domain: string }
+  | { action: 'addAccount'; acc: NewAccount }
+  | { action: 'deleteAccount'; account: string };
+
+export type AccountType = 'Account' | 'Owed to you' | 'You owe';
+
+// What the "New account" sheet sends
+export interface NewAccount {
+  name: string;
+  type: AccountType;
+  currency: string;
+  balance: string;
+  domain: string;
+}
 
 export type Op = OpBody & {
   opId: string;

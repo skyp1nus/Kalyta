@@ -77,41 +77,85 @@ export function accountLook(name: string, type = 'Account'): AccountLook {
   return { color, letter: cash ? '' : (name.trim()[0] ?? '?').toUpperCase(), icon: cash ? 'payments' : '' };
 }
 
-// Websites for logos when the sheet doesn't name one
-const KNOWN_DOMAINS: Array<[RegExp, string]> = [
-  [/wise/i, 'wise.com'],
-  [/bybit/i, 'bybit.com'],
-  [/binance/i, 'binance.com'],
-  [/mono/i, 'monobank.ua'],
-  [/revolut/i, 'revolut.com'],
-  [/privat/i, 'privatbank.ua'],
-  [/pko/i, 'pkobp.pl'],
-  [/mbank/i, 'mbank.pl'],
-  [/santander/i, 'santander.pl'],
-  [/paypal/i, 'paypal.com'],
-];
+// Banks, payment apps and exchanges with a logo. `match` finds them by account name when the
+// sheet doesn't name a website; `currency` is the usual one for a new account.
+export type BankRegion = 'Poland' | 'Ukraine' | 'Global' | 'Crypto';
+export interface Bank {
+  name: string;
+  domain: string;
+  region: BankRegion;
+  currency?: string;
+  match: RegExp;
+}
 
-export const BANKS: Array<{ name: string; domain: string }> = [
-  { name: 'Wise', domain: 'wise.com' },
-  { name: 'Revolut', domain: 'revolut.com' },
-  { name: 'monobank', domain: 'monobank.ua' },
-  { name: 'PrivatBank', domain: 'privatbank.ua' },
-  { name: 'Bybit', domain: 'bybit.com' },
-  { name: 'Binance', domain: 'binance.com' },
-  { name: 'PKO BP', domain: 'pkobp.pl' },
-  { name: 'mBank', domain: 'mbank.pl' },
-  { name: 'Santander', domain: 'santander.pl' },
-  { name: 'ING', domain: 'ing.pl' },
-  { name: 'PayPal', domain: 'paypal.com' },
+export const BANKS: Bank[] = [
+  { name: 'PKO BP', domain: 'pkobp.pl', region: 'Poland', currency: 'PLN', match: /pko/i },
+  { name: 'mBank', domain: 'mbank.pl', region: 'Poland', currency: 'PLN', match: /mbank/i },
+  { name: 'Santander', domain: 'santander.pl', region: 'Poland', currency: 'PLN', match: /santander/i },
+  { name: 'ING', domain: 'ing.pl', region: 'Poland', currency: 'PLN', match: /^ing\b/i },
+  { name: 'Pekao', domain: 'pekao.com.pl', region: 'Poland', currency: 'PLN', match: /pekao/i },
+  {
+    name: 'Millennium',
+    domain: 'bankmillennium.pl',
+    region: 'Poland',
+    currency: 'PLN',
+    match: /millennium/i,
+  },
+  { name: 'Alior', domain: 'aliorbank.pl', region: 'Poland', currency: 'PLN', match: /alior/i },
+  {
+    name: 'Credit Agricole',
+    domain: 'credit-agricole.pl',
+    region: 'Poland',
+    currency: 'PLN',
+    match: /agricole/i,
+  },
+  { name: 'BNP Paribas', domain: 'bnpparibas.pl', region: 'Poland', currency: 'PLN', match: /bnp/i },
+  { name: 'VeloBank', domain: 'velobank.pl', region: 'Poland', currency: 'PLN', match: /velo/i },
+  { name: 'monobank', domain: 'monobank.ua', region: 'Ukraine', currency: 'UAH', match: /mono/i },
+  {
+    name: 'PrivatBank',
+    domain: 'privatbank.ua',
+    region: 'Ukraine',
+    currency: 'UAH',
+    match: /privat|приват/i,
+  },
+  { name: 'Oschadbank', domain: 'oschadbank.ua', region: 'Ukraine', currency: 'UAH', match: /oschad|ощад/i },
+  { name: 'PUMB', domain: 'pumb.ua', region: 'Ukraine', currency: 'UAH', match: /pumb|пумб/i },
+  { name: 'A-Bank', domain: 'a-bank.com.ua', region: 'Ukraine', currency: 'UAH', match: /a-?bank|а-?банк/i },
+  { name: 'Sense Bank', domain: 'sensebank.ua', region: 'Ukraine', currency: 'UAH', match: /sense/i },
+  { name: 'Raiffeisen', domain: 'raiffeisen.ua', region: 'Ukraine', currency: 'UAH', match: /raiff|райф/i },
+  { name: 'izibank', domain: 'izibank.com.ua', region: 'Ukraine', currency: 'UAH', match: /izi/i },
+  { name: 'Wise', domain: 'wise.com', region: 'Global', currency: 'USD', match: /wise/i },
+  { name: 'Revolut', domain: 'revolut.com', region: 'Global', currency: 'PLN', match: /revolut/i },
+  { name: 'PayPal', domain: 'paypal.com', region: 'Global', currency: 'USD', match: /paypal/i },
+  { name: 'N26', domain: 'n26.com', region: 'Global', currency: 'EUR', match: /n26/i },
+  { name: 'Payoneer', domain: 'payoneer.com', region: 'Global', currency: 'USD', match: /payoneer/i },
+  { name: 'Zen', domain: 'zen.com', region: 'Global', currency: 'PLN', match: /^zen\b/i },
+  { name: 'Binance', domain: 'binance.com', region: 'Crypto', currency: 'USDT', match: /binance/i },
+  { name: 'Bybit', domain: 'bybit.com', region: 'Crypto', currency: 'USDT', match: /bybit/i },
+  { name: 'OKX', domain: 'okx.com', region: 'Crypto', currency: 'USDT', match: /okx/i },
+  { name: 'WhiteBIT', domain: 'whitebit.com', region: 'Crypto', currency: 'USDT', match: /whitebit/i },
+  { name: 'Coinbase', domain: 'coinbase.com', region: 'Crypto', currency: 'USDT', match: /coinbase/i },
+  { name: 'Kraken', domain: 'kraken.com', region: 'Crypto', currency: 'USDT', match: /kraken/i },
+  { name: 'KuCoin', domain: 'kucoin.com', region: 'Crypto', currency: 'USDT', match: /kucoin/i },
+  { name: 'Bitget', domain: 'bitget.com', region: 'Crypto', currency: 'USDT', match: /bitget/i },
+  { name: 'MEXC', domain: 'mexc.com', region: 'Crypto', currency: 'USDT', match: /mexc/i },
+  { name: 'Trust Wallet', domain: 'trustwallet.com', region: 'Crypto', currency: 'USDT', match: /trust/i },
+  { name: 'MetaMask', domain: 'metamask.io', region: 'Crypto', currency: 'USDT', match: /metamask/i },
 ];
+export const BANK_REGIONS: BankRegion[] = ['Poland', 'Ukraine', 'Global', 'Crypto'];
 
 export function accountDomain(name: string, domain?: string): string {
   if (domain) return domain;
-  return KNOWN_DOMAINS.find(([re]) => re.test(name))?.[1] ?? '';
+  return BANKS.find((b) => b.match.test(name))?.domain ?? '';
 }
 
+// The site's own large icon (the one iOS uses on the home screen), up to 256 px, through Google's
+// icon service: free, no key, any domain. Cached by the service worker for offline use.
 export function logoUrl(domain: string): string {
-  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128` : '';
+  return domain
+    ? `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${encodeURIComponent(domain)}&size=256`
+    : '';
 }
 
 // People (debts and loans) get a blobatar instead of a logo

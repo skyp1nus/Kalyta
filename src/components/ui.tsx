@@ -104,6 +104,8 @@ export function Avatar({
           decoding="async"
           draggable={false}
           onError={() => setFailed(logo)}
+          // a tiny favicon blown up looks worse than the letter
+          onLoad={(e) => e.currentTarget.naturalWidth < 48 && setFailed(logo)}
         />
       )}
     </span>

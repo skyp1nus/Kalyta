@@ -1,5 +1,6 @@
 import type { View } from '../lib/types';
 import type { SheetSpec } from '../nav';
+import { AccountSheet } from './AccountSheet';
 import { BalanceSheet } from './BalanceSheet';
 import { BudgetsSheet } from './BudgetsSheet';
 import { ConvertSheet } from './ConvertSheet';
@@ -57,5 +58,7 @@ export function SheetContent({
       return <LockSetupSheet step={spec.step} change={spec.change} />;
     case 'logo':
       return <LogoSheet view={view} account={spec.account} />;
+    case 'newAccount':
+      return <AccountSheet view={view} type={spec.type} />;
   }
 }

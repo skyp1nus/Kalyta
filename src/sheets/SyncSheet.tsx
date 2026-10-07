@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../components/ui';
-import { dayHeading } from '../lib/format';
+import { dayHeading, parseAmount } from '../lib/format';
 import { ADJUST_META, categoryMeta, TRANSFER_META } from '../lib/meta';
 import { type Money, useMoney } from '../lib/money';
 import { discardOp, forgetDevice, getState, repairAndRetry, retryAll, sync, useStore } from '../lib/store';
@@ -72,6 +72,15 @@ function describe(
       return { icon: 'delete', color: grey, title: `Delete rule “${op.kw}”`, amt: '' };
     case 'accountDomain':
       return { icon: 'image', color: grey, title: `${op.account} logo`, amt: op.domain };
+    case 'addAccount':
+      return {
+        icon: op.acc.type === 'Account' ? 'account_balance_wallet' : 'handshake',
+        color: '#0a84ff',
+        title: `New: ${op.acc.name}`,
+        amt: money.n(parseAmount(op.acc.balance || '0') || 0, op.acc.currency),
+      };
+    case 'deleteAccount':
+      return { icon: 'delete', color: grey, title: `Delete ${op.account}`, amt: '' };
   }
 }
 
