@@ -1,6 +1,6 @@
-import { Blobatar } from '@blobatar/react';
 import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { accountDomain, accountLook, isPerson, logoUrl } from '../lib/meta';
+import { Face } from './Face';
 
 export function Icon({
   name,
@@ -88,7 +88,7 @@ export function Avatar({
         aria-hidden="true"
         style={{ ...box, background: 'rgba(142,142,147,.18)' }}
       >
-        <Blobatar name={name} size={size} alt="" />
+        <Face name={name} type={type} size={size} />
       </span>
     );
   }

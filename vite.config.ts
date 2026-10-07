@@ -33,6 +33,15 @@ export default defineConfig({
         // bank logos: keep them so accounts don't lose their pictures offline
         runtimeCaching: [
           {
+            // bundled bank logos: fetched once, then kept
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.includes('/logos/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'bank-logos',
+              expiration: { maxEntries: 60 },
+            },
+          },
+          {
             urlPattern: ({ url }) =>
               (url.hostname === 'www.google.com' && url.pathname.startsWith('/s2/favicons')) ||
               (url.hostname.endsWith('.gstatic.com') && url.pathname.startsWith('/favicon')),

@@ -64,6 +64,12 @@ npm run build      # production build into dist/
 
 Pushing to `master` builds and deploys to GitHub Pages (Settings → Pages → Source: GitHub Actions).
 
+## Bank logos
+
+Banks and exchanges in `BANKS` (`src/lib/meta.ts`) use their App Store icons from `public/logos`.
+To add one, put it in `BANKS` and in `scripts/fetch-logos.mjs`, then run
+`node scripts/fetch-logos.mjs <domain>` and commit the new file. Other websites fall back to their own icon.
+
 ## Stack
 
 React 19, Vite 8, TypeScript 7, vite-plugin-pwa (Workbox), Biome, Vitest. Text uses the system font (SF Pro on

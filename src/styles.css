@@ -2978,3 +2978,44 @@ html.covered .app-cover {
   place-items: center;
   border: 2px solid var(--card);
 }
+
+/* ---------- people: living faces ---------- */
+
+.face {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.face.hop0 {
+  animation: face-hop-a 0.55s var(--ease);
+}
+
+.face.hop1 {
+  animation: face-hop-b 0.55s var(--ease);
+}
+
+@keyframes face-hop-a {
+  40% {
+    transform: translateY(-6%) scale(1.06);
+  }
+}
+
+@keyframes face-hop-b {
+  40% {
+    transform: translateY(-6%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face.hop0,
+  .face.hop1 {
+    animation: none;
+  }
+}

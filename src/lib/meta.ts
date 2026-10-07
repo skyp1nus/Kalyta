@@ -91,7 +91,7 @@ export interface Bank {
 export const BANKS: Bank[] = [
   { name: 'PKO BP', domain: 'pkobp.pl', region: 'Poland', currency: 'PLN', match: /pko/i },
   { name: 'mBank', domain: 'mbank.pl', region: 'Poland', currency: 'PLN', match: /mbank/i },
-  { name: 'Santander', domain: 'santander.pl', region: 'Poland', currency: 'PLN', match: /santander/i },
+  { name: 'Erste', domain: 'santander.pl', region: 'Poland', currency: 'PLN', match: /santander|erste/i },
   { name: 'ING', domain: 'ing.pl', region: 'Poland', currency: 'PLN', match: /^ing\b/i },
   { name: 'Pekao', domain: 'pekao.com.pl', region: 'Poland', currency: 'PLN', match: /pekao/i },
   {
@@ -150,12 +150,14 @@ export function accountDomain(name: string, domain?: string): string {
   return BANKS.find((b) => b.match.test(name))?.domain ?? '';
 }
 
-// The site's own large icon (the one iOS uses on the home screen), up to 256 px, through Google's
-// icon service: free, no key, any domain. Cached by the service worker for offline use.
+// Banks in BANKS ship their App Store icon (256 px, public/logos, made by scripts/fetch-logos.mjs).
+// Any other website falls back to its own large icon through Google's icon service.
+const LOCAL_LOGOS = new Set(BANKS.map((b) => b.domain));
+
 export function logoUrl(domain: string): string {
-  return domain
-    ? `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${encodeURIComponent(domain)}&size=256`
-    : '';
+  if (!domain) return '';
+  if (LOCAL_LOGOS.has(domain)) return `./logos/${domain}.jpg`;
+  return `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${encodeURIComponent(domain)}&size=256`;
 }
 
 // People (debts and loans) get a blobatar instead of a logo

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fmt } from '../src/lib/format';
-import { accountDomain } from '../src/lib/meta';
+import { accountDomain, logoUrl } from '../src/lib/meta';
 import { buildView } from '../src/lib/outbox';
 import { kwOf, norm, ruleFor } from '../src/lib/rules';
 import {
@@ -260,5 +260,11 @@ describe('accounts from the app', () => {
     expect(accountDomain('ING konto')).toBe('ing.pl');
     expect(accountDomain('Shopping')).toBe('');
     expect(accountDomain('Anything', 'example.com')).toBe('example.com');
+  });
+
+  it('uses the bundled App Store icon for known banks', () => {
+    expect(logoUrl('monobank.ua')).toBe('./logos/monobank.ua.jpg');
+    expect(logoUrl('example.com')).toContain('gstatic.com');
+    expect(logoUrl('')).toBe('');
   });
 });
