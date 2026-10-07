@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react';
 import { BackButton, Icon } from '../components/ui';
 import { connect, getState } from '../lib/store';
 import { useNav } from '../nav';
+import { AppMark } from '../sheets/WhatsNewSheet';
 
 const POINTS = [
   {
@@ -57,8 +58,11 @@ export function Onboarding() {
     <div className="onboarding">
       <div className="glow home" style={{ height: 620 }} />
       {step === 0 && (
-        <div className="ob-step" style={{ padding: 'calc(var(--st) + 93px) 28px max(44px, var(--sb))' }}>
-          <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: -1.5 }}>Kalyta</div>
+        <div className="ob-step" style={{ padding: 'calc(var(--st) + 56px) 28px max(44px, var(--sb))' }}>
+          <div style={{ animation: 'rise .5s var(--ease) both' }}>
+            <AppMark size={64} />
+          </div>
+          <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: -1.5, marginTop: 20 }}>Kalyta</div>
           <div
             style={{ fontSize: 20, color: 'var(--text2)', marginTop: 8, lineHeight: 1.3, textWrap: 'pretty' }}
           >
