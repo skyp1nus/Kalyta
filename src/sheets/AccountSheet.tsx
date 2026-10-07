@@ -202,9 +202,7 @@ export function AccountSheet({ view, type: startType }: { view: View; type?: Acc
               </button>
             ))}
           </div>
-          <div className="sheet-note">
-            Logos by Brandfetch. Saved to the Accounts tab of your Sheet.
-          </div>
+          <div className="sheet-note">Logos by Brandfetch. Saved to the Accounts tab of your Sheet.</div>
         </>
       )}
     </>

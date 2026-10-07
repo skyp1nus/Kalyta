@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
-import { useDeleteEntry, useOpenEntry } from '../components/hooks';
+import { useDeleteEntry, useOpenEntry, usePinnedGlow } from '../components/hooks';
 import { SwipeRow } from '../components/rows';
 import { BackButton, CircleButton, EmptyState, Icon, MonthHead } from '../components/ui';
 import { allEntries, type Entry, entryKey } from '../lib/entries';
@@ -44,6 +44,7 @@ export const Transactions = memo(function Transactions({
   filter?: string;
 }) {
   const nav = useNav();
+  const glow = usePinnedGlow();
   const money = useMoney(view);
   const openEntry = useOpenEntry();
   const deleteEntry = useDeleteEntry();
@@ -112,8 +113,8 @@ export const Transactions = memo(function Transactions({
 
   return (
     <>
-      <div className="scroll">
-        <div className="glow" />
+      <div className="glow" ref={glow.ref} />
+      <div className="scroll" onScroll={glow.onScroll}>
         <div className="page with-bar">
           <h1 className="large-title">Transactions</h1>
           <MonthHead

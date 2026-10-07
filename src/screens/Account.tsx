@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { useOpenEntry } from '../components/hooks';
+import { useOpenEntry, usePinnedGlow } from '../components/hooks';
 import { EntryRow } from '../components/rows';
 import { Avatar, BackButton, Icon, SectionHead } from '../components/ui';
 import { allEntries, touchesAccount } from '../lib/entries';
@@ -13,6 +13,7 @@ import { DeleteButton } from '../sheets/common';
 
 export const AccountScreen = memo(function AccountScreen({ view, name }: { view: View; name: string }) {
   const nav = useNav();
+  const glow = usePinnedGlow();
   const money = useMoney(view);
   const openEntry = useOpenEntry();
   const a = view.accounts.find((x) => x.name.toLowerCase() === name.toLowerCase());
@@ -57,15 +58,16 @@ export const AccountScreen = memo(function AccountScreen({ view, name }: { view:
 
   return (
     <>
-      <div className="scroll">
-        <div
-          className="glow"
-          style={{
-            height: 520,
-            opacity: 0.85,
-            background: `radial-gradient(70% 50% at 50% 18%, ${look.color}55 0%, transparent 70%), linear-gradient(180deg, var(--glow) 0%, transparent 85%)`,
-          }}
-        />
+      <div
+        className="glow"
+        ref={glow.ref}
+        style={{
+          height: 520,
+          opacity: 0.85,
+          background: `radial-gradient(70% 50% at 50% 18%, ${look.color}55 0%, transparent 70%), linear-gradient(180deg, var(--glow) 0%, transparent 85%)`,
+        }}
+      />
+      <div className="scroll" onScroll={glow.onScroll}>
         <div className="page" style={{ paddingTop: 'calc(var(--st) + 53px)' }}>
           <div className="acc-hero">
             {isPerson(a.type) || accountGroup(a) === 'Cash' ? (

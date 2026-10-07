@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { usePinnedGlow } from '../components/hooks';
 import { BackButton, CircleButton, EmptyState, Icon } from '../components/ui';
 import { categoryMeta } from '../lib/meta';
 import { ruleMatches } from '../lib/rules';
@@ -7,11 +8,12 @@ import { useNav } from '../nav';
 
 export const Rules = memo(function Rules({ view }: { view: View }) {
   const nav = useNav();
+  const glow = usePinnedGlow();
   const add = () => nav.open({ kind: 'rule' });
   return (
     <>
-      <div className="scroll">
-        <div className="glow" />
+      <div className="glow" ref={glow.ref} />
+      <div className="scroll" onScroll={glow.onScroll}>
         <div className="page">
           <h1 className="large-title">Category rules</h1>
           <p className="screen-intro">

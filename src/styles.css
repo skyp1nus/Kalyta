@@ -258,6 +258,7 @@ input[type="search"]::-webkit-search-decoration {
   top: 0;
   left: 0;
   right: 0;
+  will-change: transform;
   height: 560px;
   background:
     radial-gradient(60% 45% at 8% 22%, var(--glow) 0%, transparent 70%),
@@ -2155,6 +2156,7 @@ button.row:active,
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overscroll-behavior: none;
 }
 
 .ob-step {
@@ -2781,6 +2783,7 @@ button.row:active,
   align-items: center;
   overflow-y: auto;
   /* no fade-in: balances must never show through on launch or resume */
+  overscroll-behavior: none;
 }
 
 @keyframes fadein {

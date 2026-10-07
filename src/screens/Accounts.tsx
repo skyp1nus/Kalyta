@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { usePinnedGlow } from '../components/hooks';
 import { Avatar, BackButton, CircleButton, EmptyState, Icon } from '../components/ui';
 import { accountGroup, accountLook, GROUPS, isDebt } from '../lib/meta';
 import { useMoney } from '../lib/money';
@@ -8,6 +9,7 @@ import { useNav } from '../nav';
 
 export const Accounts = memo(function Accounts({ view }: { view: View }) {
   const nav = useNav();
+  const glow = usePinnedGlow();
   const money = useMoney(view);
   const nw = netWorth(view);
   const debts = -view.accounts.filter(isDebt).reduce((s, a) => s + (a.usd ?? 0), 0);
@@ -16,8 +18,8 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
 
   return (
     <>
-      <div className="scroll">
-        <div className="glow" />
+      <div className="glow" ref={glow.ref} />
+      <div className="scroll" onScroll={glow.onScroll}>
         <div className="page">
           <h1 className="large-title">Accounts</h1>
           <div style={{ padding: '18px 20px 0' }}>

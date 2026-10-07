@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { usePinnedGlow } from '../components/hooks';
 import { BackButton, CircleButton, EmptyState, Icon } from '../components/ui';
 import { categoryMeta } from '../lib/meta';
 import { type Money, useMoney } from '../lib/money';
@@ -132,6 +133,7 @@ function SuggestionCard({ g, view, money }: { g: Suggestion; view: View; money: 
 
 export const Subscriptions = memo(function Subscriptions({ view }: { view: View }) {
   const nav = useNav();
+  const glow = usePinnedGlow();
   const money = useMoney(view);
   const { ignoredSubs } = usePrefs();
   const states = useMemo(() => subStates(view), [view]);
@@ -153,8 +155,8 @@ export const Subscriptions = memo(function Subscriptions({ view }: { view: View 
 
   return (
     <>
-      <div className="scroll">
-        <div className="glow" />
+      <div className="glow" ref={glow.ref} />
+      <div className="scroll" onScroll={glow.onScroll}>
         <div className="page">
           <h1 className="large-title">Subscriptions</h1>
           {has ? (

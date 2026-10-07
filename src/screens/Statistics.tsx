@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from 'react';
+import { usePinnedGlow } from '../components/hooks';
 import { BackButton, CircleButton, EmptyState, Icon, MonthHead } from '../components/ui';
 import { saveCsv } from '../lib/csv';
 import { MONTHS, monthName, SHORT_MONTHS } from '../lib/format';
@@ -14,6 +15,7 @@ const short = (ym: string) => SHORT_MONTHS[Number(ym.slice(5, 7)) - 1];
 
 export const Statistics = memo(function Statistics({ view, ym: startYm }: { view: View; ym?: string }) {
   const nav = useNav();
+  const glow = usePinnedGlow();
   const money = useMoney(view);
   const current = view.today.slice(0, 7);
   const [ym, setYm] = useState(startYm ?? current);
@@ -66,8 +68,8 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
 
   return (
     <>
-      <div className="scroll">
-        <div className="glow" style={{ height: 620 }} />
+      <div className="glow" ref={glow.ref} style={{ height: 620 }} />
+      <div className="scroll" onScroll={glow.onScroll}>
         <div className="page">
           <h1 className="large-title">Statistics</h1>
           <MonthHead
