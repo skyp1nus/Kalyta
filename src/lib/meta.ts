@@ -150,15 +150,31 @@ export function accountDomain(name: string, domain?: string): string {
   return BANKS.find((b) => b.match.test(name))?.domain ?? '';
 }
 
-// Banks in BANKS ship their App Store icon (256 px, public/logos, made by scripts/fetch-logos.mjs).
-// Any other website falls back to its own large icon through Google's icon service.
+// Logo sources, best first; the avatar moves to the next one when a picture fails to load.
+// 1. Brandfetch Logo API (free, 1M requests a month): https://docs.brandfetch.com/docs/logo-api/
+//    The client ID is public by design; Brandfetch only serves it to pages that embed the logos.
+// 2. Banks in BANKS ship their App Store icon (256 px, public/logos, made by scripts/fetch-logos.mjs).
+// 3. Any other website: its own large icon through Google's icon service.
+export const BRANDFETCH_ID = '';
 const LOCAL_LOGOS = new Set(BANKS.map((b) => b.domain));
 
-export function logoUrl(domain: string): string {
-  if (!domain) return '';
-  if (LOCAL_LOGOS.has(domain)) return `./logos/${domain}.jpg`;
-  return `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${encodeURIComponent(domain)}&size=256`;
+export function logoUrls(domain: string): string[] {
+  if (!domain) return [];
+  const out: string[] = [];
+  if (BRANDFETCH_ID) {
+    out.push(
+      `https://cdn.brandfetch.io/domain/${encodeURIComponent(domain)}/w/256/h/256/fallback/404/icon?c=${BRANDFETCH_ID}`,
+    );
+  }
+  if (LOCAL_LOGOS.has(domain)) out.push(`./logos/${domain}.jpg`);
+  else
+    out.push(
+      `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${encodeURIComponent(domain)}&size=256`,
+    );
+  return out;
 }
+
+export const logoUrl = (domain: string): string => logoUrls(domain)[0] ?? '';
 
 // People (debts and loans) get a blobatar instead of a logo
 export const isPerson = (type?: string) => type === 'You owe' || type === 'Owed to you';

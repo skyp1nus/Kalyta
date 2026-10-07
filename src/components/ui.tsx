@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
-import { accountDomain, accountLook, isPerson, logoUrl } from '../lib/meta';
+import { accountDomain, accountLook, isPerson, logoUrls } from '../lib/meta';
 import { Face } from './Face';
 
 export function Icon({
@@ -78,8 +78,13 @@ export function Avatar({
   className?: string;
 }) {
   const look = accountLook(name, type);
-  const logo = logoUrl(accountDomain(name, domain));
-  const [failed, setFailed] = useState('');
+  const urls = logoUrls(accountDomain(name, domain));
+  const key = urls.join(' ');
+  // how many sources failed for this set of urls; the next one is tried
+  const [fail, setFail] = useState({ key: '', n: 0 });
+  const n = fail.key === key ? fail.n : 0;
+  const logo = urls[n] ?? '';
+  const next = () => setFail({ key, n: n + 1 });
   const box: CSSProperties = { width: size, height: size, fontSize: Math.round(size * 0.43) };
   if (isPerson(type)) {
     return (
@@ -92,7 +97,7 @@ export function Avatar({
       </span>
     );
   }
-  const showLogo = !!logo && !look.icon && failed !== logo;
+  const showLogo = !!logo && !look.icon;
   return (
     <span className={`${className} pic`} aria-hidden="true" style={{ ...box, background: look.color }}>
       {look.icon ? <Icon name={look.icon} size={Math.round(size * 0.55)} /> : look.letter}
@@ -103,9 +108,9 @@ export function Avatar({
           loading="lazy"
           decoding="async"
           draggable={false}
-          onError={() => setFailed(logo)}
+          onError={next}
           // a tiny favicon blown up looks worse than the letter
-          onLoad={(e) => e.currentTarget.naturalWidth < 48 && setFailed(logo)}
+          onLoad={(e) => e.currentTarget.naturalWidth < 48 && next()}
         />
       )}
     </span>

@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig } from 'vitest/config';
 
 // Relative base: works on GitHub Pages under /Kalyta/ and anywhere else.
 export default defineConfig({
@@ -28,19 +28,11 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // bank logos (jpg) too: they are the offline fallback when Brandfetch can't be reached
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,woff2}'],
         navigateFallback: 'index.html',
         // bank logos: keep them so accounts don't lose their pictures offline
         runtimeCaching: [
-          {
-            // bundled bank logos: fetched once, then kept
-            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.includes('/logos/'),
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'bank-logos',
-              expiration: { maxEntries: 60 },
-            },
-          },
           {
             urlPattern: ({ url }) =>
               (url.hostname === 'www.google.com' && url.pathname.startsWith('/s2/favicons')) ||
