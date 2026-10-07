@@ -337,21 +337,8 @@ input[type="search"]::-webkit-search-decoration {
   overflow: hidden;
   opacity: 0.85;
   pointer-events: none;
+  will-change: transform;
   contain: strict;
-}
-
-/* Home scrolls natively. The scroll area's background stays put while the content moves, so the
-   pull-down bounce shows its top half: the colour at the top edge of the glow (glow at ~60% over
-   the background). The bottom half matches the page for the bounce at the end of the list. */
-.home-scroll {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--glow) 60%, var(--bg)) 50%, var(--bg) 50%);
-}
-
-/* opaque content, so the pinned background only shows in the bounce */
-.home-content {
-  position: relative;
-  min-height: 100%;
-  background: var(--bg);
 }
 
 .home-bg-base {

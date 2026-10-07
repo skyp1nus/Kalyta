@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { useOpenEntry } from '../components/hooks';
 import { UpdatePill } from '../components/Overlays';
 import { EntryRow } from '../components/rows';
@@ -384,11 +384,11 @@ function HomeSkeleton() {
 }
 
 // Grey glow behind Home: base gradient plus three slowly drifting blobs (CSS animations on transform/opacity).
-// It scrolls natively with the content (no JS on scroll, so it never trails behind). Pulling down shows
-// the scroll area's own pinned background, which is the glow's top colour (see .home-scroll).
-const HomeBackdrop = memo(function HomeBackdrop() {
+// It lives outside the scroll area and is pinned to the top of the screen, so the pull-down bounce
+// slides the content over it with no seam; scrolling up moves it along with the content.
+const HomeBackdrop = memo(function HomeBackdrop({ innerRef }: { innerRef: React.Ref<HTMLDivElement> }) {
   return (
-    <div className="home-bg" aria-hidden="true">
+    <div className="home-bg" ref={innerRef} aria-hidden="true">
       <div className="home-bg-base" />
       <div className="blob blob-a" />
       <div className="blob blob-b" />
@@ -398,6 +398,8 @@ const HomeBackdrop = memo(function HomeBackdrop() {
 });
 
 export const Home = memo(function Home({ view }: { view: View | null }) {
+  const bgRef = useRef<HTMLDivElement>(null);
+  const bgY = useRef(0);
   const nav = useNav();
   const s = useStore();
   const prefs = usePrefs();
@@ -410,32 +412,40 @@ export const Home = memo(function Home({ view }: { view: View | null }) {
 
   return (
     <>
-      <div className="scroll home-scroll">
-        <div className="home-content">
-          <HomeBackdrop />
-          <div className="page home">
-            {view ? (
-              <HomeBody view={view} order={order} />
-            ) : (
-              <>
-                <HomeSkeleton />
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginTop: 18,
-                    fontSize: 14,
-                    color: 'var(--text2)',
-                  }}
-                >
-                  <Icon name="progress_activity" size={18} className="spin" />
-                  Loading from Google Sheet…
-                </div>
-              </>
-            )}
-          </div>
+      <HomeBackdrop innerRef={bgRef} />
+      <div
+        className="scroll"
+        onScroll={(e) => {
+          // follow the content when scrolling up; stay pinned during the pull-down bounce.
+          // Past its own height the glow is off screen, so stop touching it.
+          const y = Math.min(Math.max(0, e.currentTarget.scrollTop), 720);
+          if (y === bgY.current) return;
+          bgY.current = y;
+          if (bgRef.current) bgRef.current.style.transform = `translate3d(0,${-y}px,0)`;
+        }}
+      >
+        <div className="page home">
+          {view ? (
+            <HomeBody view={view} order={order} />
+          ) : (
+            <>
+              <HomeSkeleton />
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 18,
+                  fontSize: 14,
+                  color: 'var(--text2)',
+                }}
+              >
+                <Icon name="progress_activity" size={18} className="spin" />
+                Loading from Google Sheet…
+              </div>
+            </>
+          )}
         </div>
       </div>
 
