@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { useOpenEntry } from '../components/hooks';
 import { EntryRow } from '../components/rows';
 import { Avatar, CircleButton, Icon, SectionHead, Skeleton } from '../components/ui';
@@ -372,7 +372,21 @@ function HomeSkeleton() {
   );
 }
 
+// Grey glow behind Home: base gradient plus three slowly drifting blobs (CSS animations on transform/opacity).
+// It lives outside the scroll area, so pulling down never reveals an empty band above it.
+const HomeBackdrop = memo(function HomeBackdrop({ innerRef }: { innerRef: React.Ref<HTMLDivElement> }) {
+  return (
+    <div className="home-bg" ref={innerRef} aria-hidden="true">
+      <div className="home-bg-base" />
+      <div className="blob blob-a" />
+      <div className="blob blob-b" />
+      <div className="blob blob-c" />
+    </div>
+  );
+});
+
 export const Home = memo(function Home({ view }: { view: View | null }) {
+  const bgRef = useRef<HTMLDivElement>(null);
   const nav = useNav();
   const s = useStore();
   const prefs = usePrefs();
@@ -385,8 +399,15 @@ export const Home = memo(function Home({ view }: { view: View | null }) {
 
   return (
     <>
-      <div className="scroll">
-        <div className="glow home" />
+      <HomeBackdrop innerRef={bgRef} />
+      <div
+        className="scroll"
+        onScroll={(e) => {
+          // follow the content when scrolling up; stay pinned during the pull-down bounce
+          const y = Math.max(0, e.currentTarget.scrollTop);
+          if (bgRef.current) bgRef.current.style.transform = `translate3d(0,${-y}px,0)`;
+        }}
+      >
         <div className="page home">
           {view ? (
             <HomeBody view={view} order={order} />
@@ -449,7 +470,7 @@ export const Home = memo(function Home({ view }: { view: View | null }) {
         </div>
       </div>
 
-      <div className="fade-bottom" />
+      <div className="fade-bottom home" />
       <div className="bottom-cluster">
         <CircleButton
           icon="swap_horiz"

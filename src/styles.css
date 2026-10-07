@@ -300,6 +300,117 @@ input[type="search"]::-webkit-search-decoration {
   z-index: 4;
 }
 
+/* Home: a soft fade that lets list rows show through under the buttons */
+.fade-bottom.home {
+  height: calc(130px + var(--sb));
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--bg) 18%, transparent) 35%,
+    color-mix(in srgb, var(--bg) 50%, transparent) 65%,
+    color-mix(in srgb, var(--bg) 78%, transparent) 100%
+  );
+}
+
+/* Home backdrop: pinned behind the transparent scroll area, moved by JS while scrolling */
+.home-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 680px;
+  overflow: hidden;
+  opacity: 0.85;
+  pointer-events: none;
+  will-change: transform;
+  contain: strict;
+}
+
+.home-bg-base {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, var(--glow) 0%, transparent 80%);
+  opacity: 0.7;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--glow), transparent);
+  will-change: transform, opacity;
+  animation-duration: 8s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.blob-a {
+  left: -140px;
+  top: 40px;
+  width: 420px;
+  height: 360px;
+  animation-name: blob-a;
+}
+
+.blob-b {
+  right: -160px;
+  top: 90px;
+  width: 400px;
+  height: 320px;
+  animation-duration: 9.5s;
+  animation-name: blob-b;
+}
+
+.blob-c {
+  left: 60px;
+  top: -80px;
+  width: 300px;
+  height: 260px;
+  opacity: 0.7;
+  animation-duration: 6.5s;
+  animation-name: blob-c;
+}
+
+/* each keyframe set is played forward, then backward (alternate): one full cycle = 2 × duration */
+@keyframes blob-a {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(40px, 30px, 0) scale(1.15);
+  }
+  100% {
+    transform: translate3d(-20px, 60px, 0) scale(0.95);
+  }
+}
+
+@keyframes blob-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-50px, 40px, 0) scale(1.2);
+  }
+  100% {
+    transform: translate3d(-10px, -20px, 0) scale(1.05);
+  }
+}
+
+@keyframes blob-c {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(30px, -30px, 0) scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-30px, 20px, 0) scale(1);
+    opacity: 0.8;
+  }
+}
+
 .large-title {
   margin: 0;
   padding: 0 20px;
@@ -408,7 +519,7 @@ input[type="search"]::-webkit-search-decoration {
   color: var(--fab-ink);
   display: grid;
   place-items: center;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
   transition: transform 0.15s;
 }
 
@@ -2055,5 +2166,9 @@ button.row:active,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .blob {
+    animation: none;
   }
 }
