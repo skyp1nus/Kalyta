@@ -30,7 +30,36 @@ export interface Account {
   balance: number;
   updated: string;
   checked?: string; // last time the balance was entered by hand
+  domain?: string; // website for the logo, e.g. wise.com
   usd: number | null;
+}
+
+// Monthly limits in USD; total is the limit for all spending
+export interface Budgets {
+  total: number;
+  cats: Record<string, number>;
+}
+
+export type Cadence = 'weekly' | 'monthly' | 'yearly';
+
+export interface Subscription {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  cadence: Cadence;
+  next: string; // yyyy-MM-dd
+  account: string;
+  category: string;
+  paused: boolean;
+  prev: number | null; // the amount before the last price change
+  pending?: boolean;
+}
+
+// Place contains kw (ignoring case and accents) -> category
+export interface Rule {
+  kw: string;
+  cat: string;
 }
 
 // [id, date, account, change, currency] as the API sends them
@@ -54,6 +83,9 @@ export interface ServerData {
   adjustments?: AdjustmentRow[];
   rates?: Record<string, number>; // USD per unit
   sheetName?: string;
+  budgets?: Budgets;
+  subscriptions?: Subscription[];
+  rules?: Array<[kw: string, cat: string]>;
   categories: string[];
   colors: string[];
   income: string;
@@ -125,7 +157,13 @@ export type OpBody =
   | { action: 'deleteTransfer'; id: string }
   | { action: 'balance'; account: string; balance: string; mode?: 'adjust' | 'check'; id?: string }
   | { action: 'deleteAdjustment'; id: string }
-  | { action: 'repair' };
+  | { action: 'repair' }
+  | { action: 'budgets'; total: number; cats: Record<string, number> }
+  | { action: 'subscription'; sub: Omit<Subscription, 'pending'> }
+  | { action: 'deleteSubscription'; id: string }
+  | { action: 'rule'; kw: string; cat: string; past?: boolean; replaces?: string }
+  | { action: 'deleteRule'; kw: string }
+  | { action: 'accountDomain'; account: string; domain: string };
 
 export type Op = OpBody & {
   opId: string;
@@ -147,6 +185,9 @@ export interface View {
   rates: Record<string, number>; // USD per unit
   fetchedAt: string;
   sheetName: string;
+  budgets: Budgets;
+  subscriptions: Subscription[];
+  rules: Rule[];
   categories: string[];
   colors: string[];
   income: string;

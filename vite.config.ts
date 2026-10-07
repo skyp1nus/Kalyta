@@ -8,7 +8,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // a new version waits until the user taps Update (see src/lib/update.ts)
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Kalyta',
@@ -29,6 +30,20 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: 'index.html',
+        // bank logos: keep them so accounts don't lose their pictures offline
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              (url.hostname === 'www.google.com' && url.pathname.startsWith('/s2/favicons')) ||
+              (url.hostname.endsWith('.gstatic.com') && url.pathname.startsWith('/favicon')),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'logos',
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

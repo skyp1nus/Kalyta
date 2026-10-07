@@ -2,7 +2,7 @@ import { time } from './format';
 import { ADJUST_META, categoryMeta, TRANSFER_META } from './meta';
 import type { Money } from './money';
 import { discardOp, enqueue } from './store';
-import type { Adjustment, Transfer, Tx, View } from './types';
+import type { Adjustment, Transfer, Tx, TxInput, View } from './types';
 
 // Everything that shows up in a list of records
 export type Entry =
@@ -77,7 +77,7 @@ export function rowLook(e: Entry, view: View, money: Money): RowLook {
   return {
     ...meta,
     title: t.merchant || t.note || cat,
-    sub: t.account ? `${cat} · ${t.account}` : cat,
+    sub: `${t.category || income ? cat : 'Needs a category'}${t.account ? ` · ${t.account}` : ''}`,
     amt: money.n(t.amount, t.currency, income ? '+' : '−'),
     amt2: t.currency === money.base || t.usd == null ? time(t.date) : `≈ ${money.B(t.usd)}`,
     income,
@@ -106,4 +106,20 @@ export function deletedMessage(e: Entry): string {
     : e.kind === 'adjust'
       ? 'Adjustment removed'
       : 'Transaction deleted';
+}
+
+// A stored record as form input, for re-sending it with changes
+export function txInputOf(t: Tx, view: View, patch: Partial<TxInput> = {}): TxInput {
+  return {
+    id: t.id,
+    kind: t.category === view.income ? 'income' : 'expense',
+    date: t.date,
+    amount: String(t.amount),
+    currency: t.currency,
+    merchant: t.merchant,
+    account: t.account,
+    category: t.category,
+    note: t.note,
+    ...patch,
+  };
 }

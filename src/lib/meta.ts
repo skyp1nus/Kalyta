@@ -76,3 +76,43 @@ export function accountLook(name: string, type = 'Account'): AccountLook {
       : (ACCOUNT_COLORS.find(([re]) => re.test(name))?.[1] ?? EXTRA[hash(name) % EXTRA.length]);
   return { color, letter: cash ? '' : (name.trim()[0] ?? '?').toUpperCase(), icon: cash ? 'payments' : '' };
 }
+
+// Websites for logos when the sheet doesn't name one
+const KNOWN_DOMAINS: Array<[RegExp, string]> = [
+  [/wise/i, 'wise.com'],
+  [/bybit/i, 'bybit.com'],
+  [/binance/i, 'binance.com'],
+  [/mono/i, 'monobank.ua'],
+  [/revolut/i, 'revolut.com'],
+  [/privat/i, 'privatbank.ua'],
+  [/pko/i, 'pkobp.pl'],
+  [/mbank/i, 'mbank.pl'],
+  [/santander/i, 'santander.pl'],
+  [/paypal/i, 'paypal.com'],
+];
+
+export const BANKS: Array<{ name: string; domain: string }> = [
+  { name: 'Wise', domain: 'wise.com' },
+  { name: 'Revolut', domain: 'revolut.com' },
+  { name: 'monobank', domain: 'monobank.ua' },
+  { name: 'PrivatBank', domain: 'privatbank.ua' },
+  { name: 'Bybit', domain: 'bybit.com' },
+  { name: 'Binance', domain: 'binance.com' },
+  { name: 'PKO BP', domain: 'pkobp.pl' },
+  { name: 'mBank', domain: 'mbank.pl' },
+  { name: 'Santander', domain: 'santander.pl' },
+  { name: 'ING', domain: 'ing.pl' },
+  { name: 'PayPal', domain: 'paypal.com' },
+];
+
+export function accountDomain(name: string, domain?: string): string {
+  if (domain) return domain;
+  return KNOWN_DOMAINS.find(([re]) => re.test(name))?.[1] ?? '';
+}
+
+export function logoUrl(domain: string): string {
+  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128` : '';
+}
+
+// People (debts and loans) get a blobatar instead of a logo
+export const isPerson = (type?: string) => type === 'You owe' || type === 'Owed to you';

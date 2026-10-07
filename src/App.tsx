@@ -1,12 +1,18 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { usePrefs } from './lib/prefs';
+import { Cover, LockScreen, Reloading } from './components/Overlays';
+import { Icon } from './components/ui';
+import { getPrefs, usePrefs } from './lib/prefs';
+import { setPeek } from './lib/privacy';
 import { useStore, useView } from './lib/store';
-import { type Nav, NavContext, type Screen, type SheetSpec } from './nav';
+import { launchNotice, useUpdate } from './lib/update';
+import { type Nav, NavContext, type Screen, type SheetSpec, type ToastIcon } from './nav';
 import { AccountScreen } from './screens/Account';
 import { Accounts } from './screens/Accounts';
 import { Home } from './screens/Home';
 import { Onboarding } from './screens/Onboarding';
+import { Rules } from './screens/Rules';
 import { Statistics } from './screens/Statistics';
+import { Subscriptions } from './screens/Subscriptions';
 import { Transactions } from './screens/Transactions';
 import { SheetContent } from './sheets/SheetContent';
 
@@ -188,14 +194,19 @@ export function App() {
   }, []);
 
   // ----- toast -----
-  const [toastState, setToastState] = useState<{ msg: string; undo?: () => void; on: boolean }>({
+  const [toastState, setToastState] = useState<{
+    msg: string;
+    undo?: () => void;
+    icon?: ToastIcon;
+    on: boolean;
+  }>({
     msg: '',
     on: false,
   });
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const toast = useCallback((msg: string, undo?: () => void) => {
+  const toast = useCallback((msg: string, undo?: () => void, icon?: ToastIcon) => {
     clearTimeout(toastTimer.current);
-    setToastState({ msg, undo, on: true });
+    setToastState({ msg, undo, icon, on: true });
     toastTimer.current = setTimeout(() => setToastState((t) => ({ ...t, on: false })), undo ? 4200 : 2400);
   }, []);
 
@@ -203,6 +214,67 @@ export function App() {
     () => ({ push, pop, reset, open, close, toast }),
     [push, pop, reset, open, close, toast],
   );
+
+  // "What's new" once after an update, "Ready to work offline" after the first install
+  const upd = useUpdate();
+  const notice = useRef<ReturnType<typeof launchNotice> | undefined>(undefined);
+  useEffect(() => {
+    if (!view || notice.current !== undefined) return;
+    notice.current = launchNotice();
+    if (notice.current === 'whatsnew') setTimeout(() => open({ kind: 'whatsnew' }), 600);
+  }, [view, open]);
+  useEffect(() => {
+    if (upd.offlineReady && notice.current === 'installed') {
+      toast('Ready to work offline', undefined, { icon: 'offline_pin', color: 'var(--green)' });
+    }
+  }, [upd.offlineReady, toast]);
+
+  // Hide amounts: touch and hold anywhere to peek
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let start: { x: number; y: number } | null = null;
+    let peeked = false;
+    const down = (e: PointerEvent) => {
+      peeked = false;
+      if (!getPrefs().hide) return;
+      start = { x: e.clientX, y: e.clientY };
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        peeked = true;
+        setPeek(true);
+      }, 380);
+    };
+    const move = (e: PointerEvent) => {
+      if (start && !peeked && (Math.abs(e.clientX - start.x) > 8 || Math.abs(e.clientY - start.y) > 8)) {
+        clearTimeout(timer);
+        start = null;
+      }
+    };
+    const up = () => {
+      clearTimeout(timer);
+      start = null;
+      setPeek(false);
+    };
+    // a long press that peeked shouldn't also tap whatever was under the finger
+    const click = (e: MouseEvent) => {
+      if (!peeked) return;
+      peeked = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointermove', move, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    document.addEventListener('click', click, true);
+    return () => {
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      document.removeEventListener('click', click, true);
+    };
+  }, []);
 
   // Escape closes the sheet, then goes back
   useEffect(() => {
@@ -333,6 +405,10 @@ export function App() {
         return view && <Transactions view={view} ym={screen.ym} filter={screen.filter} />;
       case 'stats':
         return view && <Statistics view={view} ym={screen.ym} />;
+      case 'subs':
+        return view && <Subscriptions view={view} />;
+      case 'rules':
+        return view && <Rules view={view} />;
     }
   };
 
@@ -383,9 +459,19 @@ export function App() {
       </div>
 
       {!s.settings && <Onboarding />}
+      <LockScreen sheetName={view?.sheetName ?? ''} />
+      <Cover />
+      <Reloading />
 
       <div className={`toast-wrap ${toastState.on ? 'on' : ''}`} role="status" aria-live="polite">
         <div className={`toast ${toastState.undo ? 'has-undo' : ''}`}>
+          {toastState.icon && (
+            <Icon
+              name={toastState.icon.icon}
+              size={20}
+              style={{ margin: '0 -4px', color: toastState.icon.color }}
+            />
+          )}
           <span>{toastState.msg}</span>
           {toastState.undo && (
             <button

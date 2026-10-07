@@ -1,4 +1,5 @@
 import { parseAmount } from './format';
+import { norm, placeMatches, ruleFor } from './rules';
 import type {
   Account,
   Adjustment,
@@ -103,6 +104,8 @@ export function usdRate(currency: string, tx: Tx[], accounts: Account[]): number
 
 function txFromInput(input: TxInput, view: View, rate: number | null): Tx {
   const amount = parseAmount(input.amount);
+  // the sheet fills an empty category from Rules, or Other
+  const auto = ruleFor(view.rules, input.merchant)?.cat || 'Other';
   return {
     id: input.id,
     date: input.date,
@@ -110,7 +113,7 @@ function txFromInput(input: TxInput, view: View, rate: number | null): Tx {
     currency: input.currency,
     merchant: input.merchant,
     account: input.account,
-    category: input.kind === 'income' ? view.income : input.category || 'Other',
+    category: input.kind === 'income' ? view.income : input.category || auto,
     note: input.note,
     source: 'app',
     usd: rate == null || Number.isNaN(amount) ? null : Math.round(amount * rate * 100) / 100,
@@ -146,6 +149,9 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
     rates: knownRates(server, tx, accounts),
     fetchedAt: server.fetchedAt,
     sheetName: server.sheetName ?? '',
+    budgets: server.budgets ?? { total: 0, cats: {} },
+    subscriptions: (server.subscriptions ?? []).map((x) => ({ ...x })),
+    rules: (server.rules ?? []).map(([kw, cat]) => ({ kw, cat })),
     categories: server.categories,
     colors: server.colors,
     income: server.income,
@@ -204,6 +210,41 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
       }
       case 'repair':
         break;
+      case 'budgets':
+        if (!failed) view.budgets = { total: op.total, cats: { ...op.cats } };
+        break;
+      case 'subscription': {
+        if (failed) break;
+        const x = { ...op.sub, pending: true };
+        const i = view.subscriptions.findIndex((y) => y.id === x.id);
+        if (i >= 0) view.subscriptions[i] = x;
+        else view.subscriptions.push(x);
+        break;
+      }
+      case 'deleteSubscription':
+        if (!failed) view.subscriptions = view.subscriptions.filter((y) => y.id !== op.id);
+        break;
+      case 'rule': {
+        if (failed) break;
+        const drop = [norm(op.kw), norm(op.replaces)].filter(Boolean);
+        view.rules = [{ kw: op.kw, cat: op.cat }, ...view.rules.filter((r) => !drop.includes(norm(r.kw)))];
+        if (op.past) {
+          view.tx = view.tx.map((t) =>
+            t.category !== view.income && t.merchant && placeMatches(op.kw, t.merchant)
+              ? { ...t, category: op.cat }
+              : t,
+          );
+        }
+        break;
+      }
+      case 'deleteRule':
+        if (!failed) view.rules = view.rules.filter((r) => norm(r.kw) !== norm(op.kw));
+        break;
+      case 'accountDomain': {
+        const a = view.accounts.find((x) => x.name === op.account);
+        if (a && !failed) a.domain = op.domain;
+        break;
+      }
       case 'balance': {
         const i = view.accounts.findIndex((a) => a.name.toLowerCase() === op.account.toLowerCase());
         if (i >= 0 && !failed) {

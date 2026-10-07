@@ -5,12 +5,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ICONS=(
-  account_balance_wallet add add_circle autorenew bar_chart calendar_today cancel check chevron_left
-  chevron_right close cloud_done cloud_off cloud_sync cloud_upload contrast currency_exchange
-  dashboard_customize delete directions_bus donut_small drag_handle equal error expand_less expand_more
-  filter_list handshake history home insert_chart ios_share link_off local_mall location_on more_horiz
-  north_east payments pie_chart progress_activity receipt_long restaurant schedule search search_off
-  settings south_west swap_horiz swap_vert sync sync_problem table_view toll tune work
+  account_balance_wallet add add_circle arrow_circle_up autorenew backspace bar_chart block blur_on
+  calendar_today cancel check check_circle chevron_left chevron_right close cloud_done cloud_off cloud_sync
+  cloud_upload contactless contrast currency_exchange dashboard_customize delete directions_bus donut_large
+  donut_small drag_handle equal error event_available event_busy event_repeat expand_less expand_more face
+  filter_list handshake history home image insert_chart ios_share link_off local_mall location_on lock
+  lock_open more_horiz north_east offline_pin password pause_circle payments pie_chart pin play_circle
+  progress_activity radio_button_unchecked receipt_long restaurant rule savings schedule search search_off
+  settings south_west swap_horiz swap_vert sync sync_problem system_update table_view toll trending_up tune
+  visibility visibility_off wallet warning work
 )
 names=$(IFS=,; echo "${ICONS[*]}")
 # Safari's user agent makes Google Fonts answer with woff2

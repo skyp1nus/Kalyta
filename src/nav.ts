@@ -1,12 +1,14 @@
 import { createContext, useContext } from 'react';
-import type { Transfer, Tx } from './lib/types';
+import type { Rule, Subscription, Transfer, Tx } from './lib/types';
 
 export type Screen =
   | { name: 'home' }
   | { name: 'accounts' }
   | { name: 'account'; account: string }
   | { name: 'transactions'; ym?: string; filter?: string }
-  | { name: 'stats'; ym?: string };
+  | { name: 'stats'; ym?: string }
+  | { name: 'subs' }
+  | { name: 'rules' };
 
 export type SheetSpec =
   | { kind: 'tx'; edit?: Tx; account?: string; type?: 'expense' | 'income' }
@@ -15,7 +17,20 @@ export type SheetSpec =
   | { kind: 'convert' }
   | { kind: 'settings' }
   | { kind: 'sync' }
-  | { kind: 'widgets' };
+  | { kind: 'widgets' }
+  | { kind: 'budgets' }
+  | { kind: 'sub'; edit?: Subscription }
+  | { kind: 'rule'; edit?: Rule }
+  | { kind: 'review' }
+  | { kind: 'whatsnew' }
+  | { kind: 'security' }
+  | { kind: 'lockSetup'; step?: 'method' | 'enter'; change?: boolean }
+  | { kind: 'logo'; account: string };
+
+export interface ToastIcon {
+  icon: string;
+  color: string;
+}
 
 export interface Nav {
   push(s: Screen): void;
@@ -23,7 +38,7 @@ export interface Nav {
   reset(stack: Screen[]): void;
   open(sheet: SheetSpec): void;
   close(): void;
-  toast(message: string, undo?: () => void): void;
+  toast(message: string, undo?: () => void, icon?: ToastIcon): void;
 }
 
 export const NavContext = createContext<Nav | null>(null);

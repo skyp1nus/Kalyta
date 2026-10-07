@@ -5,8 +5,11 @@
 const SECRET = 'REPLACE_WITH_A_LONG_RANDOM_STRING';      // shortcuts send this with every POST
 const VIEW_KEY = 'REPLACE_WITH_ANOTHER_RANDOM_STRING';   // app + web dashboard key: <web app URL>?key=VIEW_KEY
 const SHEET_NAME = 'Expenses';
-const RULES_SHEET = 'Rules';           // optional: A = Keyword, B = Category
-const ACCOUNTS_SHEET = 'Accounts';     // A Account | B Type | C Currency | D Balance | E Updated | F USD | G Checked
+const RULES_SHEET = 'Rules';           // A = Keyword, B = Category (place contains keyword -> category)
+const BUDGETS_SHEET = 'Budgets';       // A = Category ("Total" for all spending), B = monthly limit in USD
+const SUBS_SHEET = 'Subscriptions';
+const SUBS_HEADERS = ['ID', 'Name', 'Amount', 'Currency', 'Cadence', 'Next', 'Account', 'Category', 'Paused', 'Previous amount'];
+const ACCOUNTS_SHEET = 'Accounts';     // A Account | B Type | C Currency | D Balance | E Updated | F USD | G Checked | H Domain (logo)
 const HISTORY_SHEET = 'Balance history';
 // Kind: check = balance entered by hand, adjust = correction logged as "Balance adjustment", move = transfer
 const HISTORY_HEADERS = ['Date', 'Account', 'Balance', 'Currency', 'Change', 'Kind', 'ID'];
@@ -108,6 +111,12 @@ function doGet(e) {
 //   balance  { account, balance, mode?: 'adjust' | 'check', id? }   adjust = logged as a balance adjustment
 //   deleteAdjustment { id }   undoes an adjustment: moves the balance back
 //   repair   recreates missing tabs and headers
+//   budgets  { total, cats: {category: limit} }   monthly limits in USD, replaces all
+//   subscription { sub: {id, name, amount, currency, cadence, next, account, category, paused, prev} }   add or edit
+//   deleteSubscription { id }
+//   rule     { kw, cat, past?, replaces? }   one rule per keyword; past = also recategorize earlier expenses
+//   deleteRule { kw }
+//   accountDomain { account, domain }   website used for the account's logo
 
 const TRANSFERS_SHEET = 'Transfers';
 const TRANSFER_HEADERS = ['Date', 'From', 'Sent', 'Currency', 'To', 'Received', 'Currency', 'Sent USD', 'Received USD', 'Rate', 'Note', 'ID'];
@@ -133,6 +142,12 @@ function handleApi(body) {
     else if (action === 'deleteTransfer') id = apiDeleteTransfer(clean(body.id));
     else if (action === 'deleteAdjustment') id = apiDeleteAdjustment(clean(body.id));
     else if (action === 'repair') repairTabs();
+    else if (action === 'budgets') saveBudgets(body.total, body.cats || {});
+    else if (action === 'subscription') id = saveSubscription(body.sub || {});
+    else if (action === 'deleteSubscription') id = deleteById(getSubsSheet(), 1, clean(body.id));
+    else if (action === 'rule') saveRule(clean(body.kw), clean(body.cat), !!body.past, clean(body.replaces));
+    else if (action === 'deleteRule') deleteRule(clean(body.kw));
+    else if (action === 'accountDomain') setAccountDomain(clean(body.account), clean(body.domain));
     else if (action === 'balance') {
       if (!clean(body.account)) throw new Error('Pick an account');
       id = clean(body.id) || newId();
@@ -314,6 +329,170 @@ function repairTabs() {
   getTransfersSheet();
   getAccountsSheet();
   getHistorySheet();
+  getRulesSheet();
+  getBudgetsSheet();
+  getSubsSheet();
+}
+
+// ----- Kalyta 2.1: rules, budgets, subscriptions -----
+
+// Case- and accent-insensitive text for matching places ("Żabka" matches "ZABKA")
+function norm(s) {
+  return clean(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function ensureTab(name, headers) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.setFrozenRows(1);
+  }
+  const head = sh.getRange(1, 1, 1, headers.length).getValues()[0];
+  if (head.join('|') !== headers.join('|')) sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  return sh;
+}
+
+function getRulesSheet() {
+  return ensureTab(RULES_SHEET, ['Keyword', 'Category']);
+}
+
+function getBudgetsSheet() {
+  return ensureTab(BUDGETS_SHEET, ['Category', 'Monthly limit (USD)']);
+}
+
+function getSubsSheet() {
+  return ensureTab(SUBS_SHEET, SUBS_HEADERS);
+}
+
+function rows(sh, cols) {
+  const n = sh.getLastRow() - 1;
+  return n < 1 ? [] : sh.getRange(2, 1, n, cols).getValues();
+}
+
+function deleteById(sh, col, id) {
+  const row = findRowById(sh, col, id);
+  if (row > 0) sh.deleteRow(row);
+  return id;
+}
+
+function saveBudgets(total, cats) {
+  const sh = getBudgetsSheet();
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
+  const out = [];
+  const t = Number(total) || 0;
+  if (t > 0) out.push(['Total', Math.round(t * 100) / 100]);
+  CATEGORIES.forEach(c => {
+    const v = Number(cats[c]) || 0;
+    if (v > 0) out.push([c, Math.round(v * 100) / 100]);
+  });
+  if (out.length) sh.getRange(2, 1, out.length, 2).setValues(out);
+}
+
+function readBudgets() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BUDGETS_SHEET);
+  const out = { total: 0, cats: {} };
+  if (!sh) return out;
+  rows(sh, 2).forEach(r => {
+    const k = clean(r[0]), v = Number(r[1]) || 0;
+    if (!k || !(v > 0)) return;
+    if (k.toLowerCase() === 'total') out.total = v;
+    else out.cats[k] = v;
+  });
+  return out;
+}
+
+function dayString(v) {
+  return v instanceof Date ? Utilities.formatDate(v, spreadsheetTz(), 'yyyy-MM-dd') : clean(v);
+}
+
+function saveSubscription(x) {
+  const sh = getSubsSheet();
+  const id = clean(x.id) || newId();
+  const name = clean(x.name);
+  const amount = parseAmount(String(x.amount)).amount;
+  if (!name) throw new Error('Enter a name');
+  if (!(amount > 0)) throw new Error('Enter an amount');
+  const cad = ['weekly', 'monthly', 'yearly'].indexOf(clean(x.cadence)) >= 0 ? clean(x.cadence) : 'monthly';
+  const next = clean(x.next);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) throw new Error('Bad date: ' + next);
+  const prev = Number(x.prev) || '';
+  const values = [[id, name, amount, clean(x.currency).toUpperCase() || LOCAL_CURRENCY, cad, next, clean(x.account),
+    clean(x.category) || 'Subscriptions', x.paused ? 'yes' : '', prev]];
+  let row = findRowById(sh, 1, id);
+  if (row < 0) row = Math.max(sh.getLastRow(), 1) + 1;
+  sh.getRange(row, 6).setNumberFormat('@');
+  sh.getRange(row, 1, 1, SUBS_HEADERS.length).setValues(values);
+  return id;
+}
+
+function readSubscriptions() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SUBS_SHEET);
+  if (!sh) return [];
+  return rows(sh, SUBS_HEADERS.length).filter(r => clean(r[0]) && clean(r[1])).map(r => ({
+    id: clean(r[0]),
+    name: clean(r[1]),
+    amount: Number(r[2]) || 0,
+    currency: clean(r[3]).toUpperCase(),
+    cadence: clean(r[4]) || 'monthly',
+    next: dayString(r[5]),
+    account: clean(r[6]),
+    category: clean(r[7]) || 'Subscriptions',
+    paused: !!clean(r[8]),
+    prev: Number(r[9]) || null,
+  }));
+}
+
+// One rule per keyword: a new rule for the same keyword replaces the old one
+function saveRule(kw, cat, past, replaces) {
+  if (norm(kw).length < 2) throw new Error('Keyword is too short');
+  if (CATEGORIES.indexOf(cat) < 0) throw new Error('Unknown category: ' + cat);
+  const sh = getRulesSheet();
+  const drop = [norm(kw), norm(replaces)].filter(Boolean);
+  const kept = rows(sh, 2).filter(r => clean(r[0]) && drop.indexOf(norm(r[0])) < 0);
+  kept.unshift([kw, cat]);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
+  sh.getRange(2, 1, kept.length, 2).setValues(kept);
+  if (past) recategorize(kw, cat);
+}
+
+function deleteRule(kw) {
+  const sh = getRulesSheet();
+  const kept = rows(sh, 2).filter(r => clean(r[0]) && norm(r[0]) !== norm(kw));
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
+  if (kept.length) sh.getRange(2, 1, kept.length, 2).setValues(kept);
+}
+
+// Moves earlier expenses whose place contains the keyword into the category
+function recategorize(kw, cat) {
+  const sheet = getSheet();
+  const n = sheet.getLastRow() - 1;
+  if (n < 1) return;
+  const range = sheet.getRange(2, COL.merchant, n, COL.category - COL.merchant + 1);
+  const values = range.getValues();
+  const k = norm(kw);
+  let changed = false;
+  values.forEach(r => {
+    const cur = clean(r[COL.category - COL.merchant]);
+    if (cur !== INCOME && norm(r[0]).indexOf(k) >= 0 && cur !== cat) {
+      r[COL.category - COL.merchant] = cat;
+      changed = true;
+    }
+  });
+  if (changed) range.setValues(values);
+}
+
+function readRules() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RULES_SHEET);
+  if (!sh) return [];
+  return rows(sh, 2).filter(r => clean(r[0]) && clean(r[1])).map(r => [clean(r[0]), clean(r[1])]);
+}
+
+function setAccountDomain(name, domain) {
+  const row = accountRow(name);
+  if (row < 0) throw new Error('Account not found');
+  domain = domain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+  getAccountsSheet().getRange(row, 8).setValue(domain);
 }
 
 function sameCurrency(a, b) {
@@ -403,7 +582,7 @@ function getApiData() {
 
   const acc = ss.getSheetByName(ACCOUNTS_SHEET);
   const day = d => (d instanceof Date ? Utilities.formatDate(d, tz, 'yyyy-MM-dd') : clean(d));
-  const accounts = !acc || acc.getLastRow() < 2 ? [] : acc.getRange(2, 1, acc.getLastRow() - 1, 7).getValues()
+  const accounts = !acc || acc.getLastRow() < 2 ? [] : acc.getRange(2, 1, acc.getLastRow() - 1, Math.min(8, Math.max(7, acc.getLastColumn()))).getValues()
     .filter(r => clean(r[0]))
     .map(r => ({
       name: clean(r[0]),
@@ -412,6 +591,7 @@ function getApiData() {
       balance: Number(r[3]) || 0,
       updated: day(r[4]),
       checked: day(r[6]) || day(r[4]),
+      domain: clean(r[7]),
       usd: typeof r[5] === 'number' ? Math.round(r[5] * 100) / 100 : null,
     }));
 
@@ -429,6 +609,9 @@ function getApiData() {
     adjustments: adjustments,
     rates: currentRates(),
     sheetName: ss.getName(),
+    budgets: readBudgets(),
+    subscriptions: readSubscriptions(),
+    rules: readRules(),
     categories: CATEGORIES,
     colors: CATEGORY_COLORS,
     income: INCOME,
@@ -485,10 +668,10 @@ function detectCurrency(s) {
 function autoCategory(merchant) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RULES_SHEET);
   if (!sheet || !merchant) return '';
-  const m = merchant.toLowerCase();
-  const rows = sheet.getDataRange().getValues().slice(1);
-  for (const [keyword, category] of rows) {
-    if (keyword && m.includes(String(keyword).toLowerCase())) return category;
+  const m = norm(merchant);
+  const list = sheet.getDataRange().getValues().slice(1);
+  for (const [keyword, category] of list) {
+    if (keyword && m.includes(norm(keyword))) return category;
   }
   return '';
 }
@@ -633,6 +816,8 @@ function getAccountsSheet() {
     sh.getRange(1, 7).setValue('Checked').setFontWeight('bold');
     sh.getRange('G:G').setNumberFormat('yyyy-mm-dd hh:mm');
   }
+  if (sh.getMaxColumns() < 8) sh.insertColumnsAfter(sh.getMaxColumns(), 8 - sh.getMaxColumns());
+  if (clean(sh.getRange(1, 8).getValue()) !== 'Domain') sh.getRange(1, 8).setValue('Domain').setFontWeight('bold');
   return sh;
 }
 

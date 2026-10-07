@@ -4,7 +4,7 @@ import { EntryRow } from '../components/rows';
 import { Avatar, BackButton, Icon, SectionHead } from '../components/ui';
 import { allEntries, touchesAccount } from '../lib/entries';
 import { MONTHS, shortDate } from '../lib/format';
-import { accountGroup, accountLook, isDebt } from '../lib/meta';
+import { accountGroup, accountLook, isDebt, isPerson } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import type { View } from '../lib/types';
 import { useNav } from '../nav';
@@ -65,7 +65,17 @@ export const AccountScreen = memo(function AccountScreen({ view, name }: { view:
         />
         <div className="page" style={{ paddingTop: 'calc(var(--st) + 53px)' }}>
           <div className="acc-hero">
-            <Avatar name={a.name} type={a.type} size={72} />
+            {isPerson(a.type) || accountGroup(a) === 'Cash' ? (
+              <Avatar name={a.name} type={a.type} domain={a.domain} size={72} />
+            ) : (
+              <button
+                type="button"
+                aria-label="Change logo"
+                onClick={() => nav.open({ kind: 'logo', account: a.name })}
+              >
+                <Avatar name={a.name} type={a.type} domain={a.domain} size={72} />
+              </button>
+            )}
             <div style={{ fontSize: 20, fontWeight: 600, marginTop: 12 }}>{a.name}</div>
             <div style={{ fontSize: 46, fontWeight: 700, letterSpacing: -1.4, marginTop: 4 }}>
               {money.n(a.balance, a.currency)}

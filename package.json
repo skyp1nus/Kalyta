@@ -1,7 +1,7 @@
 {
   "name": "kalyta",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Personal finance app: expenses, income, transfers and balances on top of a Google Sheet",
   "type": "module",
   "scripts": {
@@ -14,6 +14,8 @@
     "format": "biome format --write src tests"
   },
   "dependencies": {
+    "@blobatar/react": "^2.7.0",
+    "blobatar": "^2.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

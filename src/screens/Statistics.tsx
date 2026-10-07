@@ -5,6 +5,7 @@ import { MONTHS, monthName, SHORT_MONTHS } from '../lib/format';
 import { CATEGORY_META } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { comparison, monthSummary, shiftYm } from '../lib/stats';
+import { BUDGET_COLOR, BUDGET_TEXT, budgetState } from '../lib/subs';
 import { plural } from '../lib/syncState';
 import type { View } from '../lib/types';
 import { useNav } from '../nav';
@@ -61,6 +62,7 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
     prevCats.set(c, (prevCats.get(c) ?? 0) + (t.usd ?? 0));
   }
   const vsLabel = running ? cmp.label : short(prev.ym);
+  const pace = running ? (m.passed / m.dim) * 100 : 100;
 
   return (
     <>
@@ -238,8 +240,24 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
 
               {m.cats.length > 0 && (
                 <div className="panel flush">
-                  <div className="pt" style={{ padding: '0 18px' }}>
+                  <div
+                    className="pt"
+                    style={{
+                      padding: '0 18px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                    }}
+                  >
                     Categories
+                    <button
+                      type="button"
+                      className="link-btn"
+                      style={{ fontSize: 15 }}
+                      onClick={() => nav.open({ kind: 'budgets' })}
+                    >
+                      Budgets
+                    </button>
                   </div>
                   <div className="donut">
                     <div className="ring" style={{ background: conic }} />
@@ -252,6 +270,8 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
                     const meta = CATEGORY_META[k] ?? CATEGORY_META.Other;
                     const pv = prevCats.get(k) ?? 0;
                     const d = pv ? Math.round((v / pv - 1) * 100) : null;
+                    const lim = view.budgets.cats[k] ?? 0;
+                    const b = lim > 0 ? budgetState(v, lim) : null;
                     return (
                       <div key={k}>
                         {i > 0 && <div className="sep" style={{ marginLeft: 62 }} />}
@@ -285,6 +305,31 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
                           </span>
                           <Icon name="chevron_right" size={20} style={{ color: 'var(--text3)' }} />
                         </button>
+                        {lim > 0 && b && (
+                          <button
+                            type="button"
+                            className="cat-budget"
+                            onClick={() => nav.push({ name: 'transactions', ym, filter: k })}
+                          >
+                            <span className="bud-bar" style={{ height: 5, marginTop: 0 }}>
+                              <i style={{ width: `${b.w}%`, background: BUDGET_COLOR[b.st] }} />
+                              <i className="pace" style={{ left: `${pace}%` }} />
+                            </span>
+                            <span
+                              className="bud-head"
+                              style={{ fontSize: 12, marginTop: 6, color: 'var(--text2)' }}
+                            >
+                              <span>Budget {money.B(lim)}</span>
+                              <span style={{ color: BUDGET_TEXT[b.st], fontWeight: 600 }}>
+                                {b.st === 'over'
+                                  ? `${money.B(v - lim)} over`
+                                  : b.st === 'close'
+                                    ? `${Math.round(b.p)}% used`
+                                    : `${money.B(lim - v)} left`}
+                              </span>
+                            </span>
+                          </button>
+                        )}
                       </div>
                     );
                   })}

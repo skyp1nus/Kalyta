@@ -97,11 +97,19 @@ export const CURRENCY_SIGN: Record<string, string> = {
 };
 
 // "$656", "23.40 zł", "− 1,289 ₴". Cents only when there are any (and the user wants them).
-export function fmt(v: number, currency: string, sign: '' | '+' | '−' = '', cents = true): string {
+export function fmt(
+  v: number,
+  currency: string,
+  sign: '' | '+' | '−' = '',
+  cents = true,
+  hidden = false,
+): string {
   if (!Number.isFinite(v)) return '–';
   const abs = Math.abs(v);
   const d = cents && Math.round(abs * 100) % 100 !== 0 ? 2 : 0;
-  const n = abs.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const n = hidden
+    ? '•••'
+    : abs.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
   const p = sign ? `${sign} ` : '';
   const pre = PREFIX[currency];
   if (pre) return `${p}${pre}${n}`;

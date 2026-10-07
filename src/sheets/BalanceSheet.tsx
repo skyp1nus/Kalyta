@@ -71,7 +71,7 @@ export function BalanceSheet({ view, name }: { view: View; name: string }) {
         right={<SaveButton onClick={save} enabled={has} />}
       />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 22 }}>
-        <Avatar name={a.name} type={a.type} size={60} />
+        <Avatar name={a.name} type={a.type} domain={a.domain} size={60} />
         <div style={{ fontSize: 20, fontWeight: 600, marginTop: 10 }}>{a.name}</div>
         <div style={{ fontSize: 15, color: 'var(--text2)', marginTop: 3 }}>
           In Kalyta: {money.n(a.balance, a.currency)}

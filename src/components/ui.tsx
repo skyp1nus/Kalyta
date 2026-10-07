@@ -1,5 +1,6 @@
-import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from 'react';
-import { accountLook } from '../lib/meta';
+import { Blobatar } from '@blobatar/react';
+import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { accountDomain, accountLook, isPerson, logoUrl } from '../lib/meta';
 
 export function Icon({
   name,
@@ -66,22 +67,45 @@ export function BackButton({ onClick }: { onClick: () => void }) {
 export function Avatar({
   name,
   type,
+  domain,
   size = 40,
   className = 'avatar',
 }: {
   name: string;
   type?: string;
+  domain?: string;
   size?: number;
   className?: string;
 }) {
   const look = accountLook(name, type);
+  const logo = logoUrl(accountDomain(name, domain));
+  const [failed, setFailed] = useState('');
+  const box: CSSProperties = { width: size, height: size, fontSize: Math.round(size * 0.43) };
+  if (isPerson(type)) {
+    return (
+      <span
+        className={`${className} pic`}
+        aria-hidden="true"
+        style={{ ...box, background: 'rgba(142,142,147,.18)' }}
+      >
+        <Blobatar name={name} size={size} alt="" />
+      </span>
+    );
+  }
+  const showLogo = !!logo && !look.icon && failed !== logo;
   return (
-    <span
-      className={className}
-      aria-hidden="true"
-      style={{ background: look.color, width: size, height: size, fontSize: Math.round(size * 0.43) }}
-    >
+    <span className={`${className} pic`} aria-hidden="true" style={{ ...box, background: look.color }}>
       {look.icon ? <Icon name={look.icon} size={Math.round(size * 0.55)} /> : look.letter}
+      {showLogo && (
+        <img
+          src={logo}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setFailed(logo)}
+        />
+      )}
     </span>
   );
 }
@@ -122,18 +146,20 @@ export function Segmented<T extends string>({
   value,
   onChange,
   label,
+  tight,
 }: {
   options: Array<{ value: T; label: string; icon?: string }>;
   value: T;
   onChange: (v: T) => void;
   label: string;
+  tight?: boolean;
 }) {
   const i = Math.max(
     0,
     options.findIndex((o) => o.value === value),
   );
   return (
-    <div className="segmented" title={label}>
+    <div className={tight ? 'segmented tight' : 'segmented'} title={label}>
       <span
         className="thumb"
         style={{

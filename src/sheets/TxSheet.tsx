@@ -5,9 +5,12 @@ import { nowLocal, parseAmount } from '../lib/format';
 import { CATEGORY_META, CURRENCIES, categoryMeta, INCOME_META, isDebt } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { newId } from '../lib/outbox';
+import { kwOf, norm, placeMatches, ruleFor } from '../lib/rules';
+import { monthSummary } from '../lib/stats';
 import { enqueue, useStore } from '../lib/store';
 import { syncInfo } from '../lib/syncState';
 import type { Tx, TxInput, View } from '../lib/types';
+import type { ToastIcon } from '../nav';
 import { useNav } from '../nav';
 import { CloseButton, DateRow, DeleteButton, NoteRow, SaveButton, SheetHead, tintFor } from './common';
 
@@ -58,6 +61,8 @@ export function TxSheet({
   const [note, setNote] = useState(edit?.note ?? '');
   const [picker, setPicker] = useState<'cur' | 'acc' | null>(null);
   const [armed, setArmed] = useState(false);
+  const [autoCat, setAutoCat] = useState(false); // category filled in by a rule, not picked
+  const [ruleChoice, setRuleChoice] = useState<'one' | 'future' | 'past'>('one');
 
   const n = parseAmount(amount);
   const valid = n > 0;
@@ -79,6 +84,50 @@ export function TxSheet({
       .map(([p]) => p);
   }, [view, kind, category, place]);
 
+  function onPlace(v: string) {
+    setPlace(v);
+    // a matching rule picks the category for new records, unless the user chose one
+    if (!edit && kind === 'expense' && (autoCat || !category)) {
+      const r = ruleFor(view.rules, v);
+      setCategory(r?.cat ?? '');
+      setAutoCat(!!r);
+    }
+  }
+
+  // Changing an expense's category offers to remember it for that place
+  const kw = kwOf(place);
+  const rulePrompt =
+    !!edit &&
+    kind === 'expense' &&
+    !!category &&
+    category !== edit.category &&
+    !!place.trim() &&
+    norm(kw).trim().length >= 2 &&
+    !view.rules.some((r) => norm(r.kw) === norm(kw) && r.cat === category);
+  const pastCount = rulePrompt
+    ? view.tx.filter(
+        (t) => t.id !== edit?.id && t.category !== view.income && t.merchant && placeMatches(kw, t.merchant),
+      ).length
+    : 0;
+
+  // "Food · 92% of budget" when this expense crosses 80% or 100% of the category's limit
+  function budgetToast(cat: string, usdNow: number | null): [string, ToastIcon] | null {
+    const lim = view.budgets.cats[cat];
+    const ym = view.today.slice(0, 7);
+    if (kind !== 'expense' || !lim || usdNow == null || !date.startsWith(ym)) return null;
+    const before = new Map(monthSummary(view, ym).cats).get(cat) ?? 0;
+    const old = edit && edit.category === cat && edit.date.startsWith(ym) ? (edit.usd ?? 0) : 0;
+    const after = before - old + usdNow;
+    const p0 = (before / lim) * 100;
+    const p1 = (after / lim) * 100;
+    if (!((p0 < 80 && p1 >= 80) || (p0 <= 100 && p1 > 100))) return null;
+    const over = p1 > 100;
+    return [
+      `${cat} · ${Math.round(p1)}% of budget${over ? ` · ${money.B(after - lim)} over` : ''}`,
+      { icon: over ? 'error' : 'donut_large', color: over ? 'var(--red)' : '#ff9f0a' },
+    ];
+  }
+
   function save() {
     if (!valid) return;
     const tx: TxInput = {
@@ -95,6 +144,18 @@ export function TxSheet({
     if (edit) enqueue({ action: 'update', id: edit.id, tx });
     else enqueue({ action: 'add', tx });
     nav.close();
+    if (rulePrompt && ruleChoice !== 'one') {
+      enqueue({ action: 'rule', kw, cat: category, past: ruleChoice === 'past' });
+      nav.toast(
+        ruleChoice === 'past' ? `Rule added · ${pastCount} records in ${category}` : `Rule added for “${kw}”`,
+        undefined,
+        { icon: 'rule', color: 'var(--text)' },
+      );
+      return;
+    }
+    const cat = tx.category || ruleFor(view.rules, tx.merchant)?.cat || '';
+    const b = budgetToast(cat, money.toUsd(n, currency));
+    if (b) return nav.toast(b[0], undefined, b[1]);
     nav.toast(
       info.mode === 'offline'
         ? 'Saved on iPhone · will sync later'
@@ -194,7 +255,10 @@ export function TxSheet({
                 aria-pressed={category === c}
                 className="cat-chip"
                 style={{ borderColor: category === c ? meta.color : 'transparent' }}
-                onClick={() => setCategory(category === c ? '' : c)}
+                onClick={() => {
+                  setAutoCat(false);
+                  setCategory(category === c ? '' : c);
+                }}
               >
                 <span className="ic" style={{ background: meta.color }}>
                   <Icon name={meta.icon} />
@@ -210,6 +274,55 @@ export function TxSheet({
           No category: your sheet picks one from its Rules.
         </div>
       )}
+      {rulePrompt && (
+        <div className="rule-prompt">
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <span className="ic" style={{ background: categoryMeta(category, view.income).color }}>
+              <Icon name={categoryMeta(category, view.income).icon} size={18} />
+            </span>
+            <div
+              style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.35, paddingTop: 4, textWrap: 'pretty' }}
+            >
+              Always use {category} for “{kw}”?
+            </div>
+          </div>
+          <div className="vseg">
+            {(
+              [
+                ['one', 'Just this one', ''],
+                ['future', 'Future only', ''],
+                ['past', 'Future + past', `${pastCount} record${pastCount === 1 ? '' : 's'}`],
+              ] as const
+            ).map(([k, label, note]) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={ruleChoice === k}
+                className={ruleChoice === k ? 'on' : ''}
+                onClick={() => setRuleChoice(k)}
+              >
+                <span>{label}</span>
+                <span style={{ fontWeight: 400, color: 'var(--text2)' }}>{note}</span>
+              </button>
+            ))}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: 'var(--text2)',
+              marginTop: 10,
+              lineHeight: 1.4,
+              textWrap: 'pretty',
+            }}
+          >
+            {ruleChoice === 'one'
+              ? 'Only this record changes.'
+              : ruleChoice === 'future'
+                ? `New records from “${kw}” will go to ${category}. Manage rules in Settings → Category rules.`
+                : `This record and ${pastCount} earlier one${pastCount === 1 ? '' : 's'} move to ${category}. New ones will too.`}
+          </div>
+        </div>
+      )}
 
       <div className="group" style={{ margin: '16px 20px 0' }}>
         <label className="kv-row">
@@ -218,13 +331,13 @@ export function TxSheet({
             value={place}
             placeholder={kind === 'income' ? 'Who paid?' : 'Where?'}
             autoComplete="off"
-            onChange={(e) => setPlace(e.target.value)}
+            onChange={(e) => onPlace(e.target.value)}
           />
         </label>
         {suggestions.length > 0 && (
           <div className="sugs">
             {suggestions.map((p) => (
-              <button key={p} type="button" onClick={() => setPlace(p)}>
+              <button key={p} type="button" onClick={() => onPlace(p)}>
                 {p}
               </button>
             ))}
@@ -239,7 +352,15 @@ export function TxSheet({
           onClick={() => setPicker(picker === 'acc' ? null : 'acc')}
         >
           <span style={{ flex: 1 }}>Account</span>
-          {account && <Avatar name={account} type={accountRow?.type} size={22} className="mini-avatar" />}
+          {account && (
+            <Avatar
+              name={account}
+              type={accountRow?.type}
+              domain={accountRow?.domain}
+              size={22}
+              className="mini-avatar"
+            />
+          )}
           <span className="value">{account || 'None'}</span>
           <Icon
             name={picker === 'acc' ? 'expand_less' : 'chevron_right'}
@@ -261,7 +382,7 @@ export function TxSheet({
                 setPicker(null);
               }}
             >
-              <Avatar name={a.name} type={a.type} size={30} className="avatar" />
+              <Avatar name={a.name} type={a.type} domain={a.domain} size={30} className="avatar" />
               <span style={{ flex: 1, fontSize: 16 }}>{a.name}</span>
               <span style={{ fontSize: 15, color: 'var(--text2)' }}>{money.n(a.balance, a.currency)}</span>
               <Icon name={a.name === account ? 'check' : ''} size={20} style={{ width: 20 }} />

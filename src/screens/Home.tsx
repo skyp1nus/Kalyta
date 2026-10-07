@@ -1,5 +1,6 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import { useOpenEntry } from '../components/hooks';
+import { UpdatePill } from '../components/Overlays';
 import { EntryRow } from '../components/rows';
 import { Avatar, CircleButton, Icon, SectionHead, Skeleton } from '../components/ui';
 import { allEntries } from '../lib/entries';
@@ -12,6 +13,7 @@ import { useStore } from '../lib/store';
 import { plural, type SyncInfo, syncInfo } from '../lib/syncState';
 import type { Account, View } from '../lib/types';
 import { useNav } from '../nav';
+import { BudgetsBlock, PeekHint, ReviewBanner, UpcomingBlock } from './HomeBlocks';
 
 export function syncLook(info: SyncInfo) {
   switch (info.mode) {
@@ -219,7 +221,7 @@ function AccountRows({
             className="row"
             onClick={() => nav.push({ name: 'account', account: a.name })}
           >
-            <Avatar name={a.name} type={a.type} />
+            <Avatar name={a.name} type={a.type} domain={a.domain} />
             <span className="main">
               <span className="title">{a.name}</span>
               <span className="sub" style={{ display: 'block' }}>
@@ -251,6 +253,8 @@ const HomeBody = memo(function HomeBody({ view, order }: { view: View; order: Bl
 
   const blocks: Record<Block, React.ReactNode> = {
     cards: <Cards view={view} money={money} />,
+    budgets: <BudgetsBlock view={view} money={money} />,
+    upcoming: <UpcomingBlock view={view} money={money} />,
     accounts: own.length > 0 && (
       <>
         <SectionHead
@@ -335,7 +339,14 @@ const HomeBody = memo(function HomeBody({ view, order }: { view: View; order: Bl
   return (
     <>
       <HeroPager view={view} money={money} />
+      <PeekHint />
       <Banner info={info} sheetName={view.sheetName} onOpen={() => nav.open({ kind: 'sync' })} />
+      <ReviewBanner
+        view={view}
+        tight={
+          info.mode === 'offline' || info.mode === 'error' || (info.mode === 'syncing' && info.waiting > 0)
+        }
+      />
       {order.map((k) => (
         <div key={k}>{blocks[k]}</div>
       ))}
@@ -470,6 +481,7 @@ export const Home = memo(function Home({ view }: { view: View | null }) {
         </div>
       </div>
 
+      <UpdatePill />
       <div className="fade-bottom home" />
       <div className="bottom-cluster">
         <CircleButton

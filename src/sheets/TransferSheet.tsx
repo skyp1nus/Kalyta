@@ -144,7 +144,9 @@ export function TransferSheet({
           aria-expanded={picker === which}
           onClick={() => setPicker(picker === which ? null : which)}
         >
-          {name && <Avatar name={name} type={account?.type} size={32} className="avatar" />}
+          {name && (
+            <Avatar name={name} type={account?.type} domain={account?.domain} size={32} className="avatar" />
+          )}
           <span style={{ fontSize: 17, fontWeight: 600 }}>{name || 'Choose account'}</span>
           <span style={{ flex: 1, fontSize: 15, color: 'var(--text2)' }}>
             {account ? money.n(account.balance, account.currency) : ''}

@@ -56,6 +56,22 @@ function describe(
       return { icon: 'delete', color: grey, title: 'Remove adjustment', amt: '' };
     case 'repair':
       return { icon: 'table_view', color: '#0f9d58', title: 'Recreate missing tabs', amt: '' };
+    case 'budgets':
+      return { icon: 'savings', color: '#30d158', title: 'Budgets', amt: '' };
+    case 'subscription':
+      return {
+        ...categoryMeta(op.sub.category, view.income),
+        title: op.sub.name,
+        amt: money.n(op.sub.amount, op.sub.currency),
+      };
+    case 'deleteSubscription':
+      return { icon: 'block', color: grey, title: 'Stop tracking a subscription', amt: '' };
+    case 'rule':
+      return { ...categoryMeta(op.cat, view.income), title: `Rule “${op.kw}”`, amt: op.cat };
+    case 'deleteRule':
+      return { icon: 'delete', color: grey, title: `Delete rule “${op.kw}”`, amt: '' };
+    case 'accountDomain':
+      return { icon: 'image', color: grey, title: `${op.account} logo`, amt: op.domain };
   }
 }
 

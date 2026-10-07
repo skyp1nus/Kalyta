@@ -1,11 +1,13 @@
 import './styles.css';
-import { registerSW } from 'virtual:pwa-register';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { startPrivacyWatch } from './lib/privacy';
 import { startBackgroundSync } from './lib/store';
+import { startUpdates } from './lib/update';
 
-registerSW({ immediate: true });
+startUpdates();
+startPrivacyWatch();
 startBackgroundSync();
 
 const root = document.getElementById('root');

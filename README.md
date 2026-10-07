@@ -11,6 +11,12 @@ by month and category, and how much you have across all accounts.
   in USD, PLN, EUR or UAH and has a quick converter that works offline with the last saved rates.
 - **iOS-style interface**: screens slide in and out (swipe from the left edge to go back), forms open as sheets you can
   drag down, swipe a transaction left to delete it (with Undo), light and dark themes.
+- **Budgets and subscriptions**: monthly limits per category with a pace marker, and repeating charges found in your
+  history with what is due next.
+- **Category rules**: fix a category once and Kalyta remembers it for that place; Apple Pay records without a
+  category wait in a quick review.
+- **App lock**: Face ID or a 6-digit passcode, a switch that hides amounts (touch and hold to peek) and a blurred
+  cover in the app switcher.
 
 ## How it fits together
 
@@ -18,6 +24,7 @@ by month and category, and how much you have across all accounts.
 iPhone (Kalyta PWA) ── HTTPS POST ──> Apps Script web app ──> Google Sheet
 Apple Pay (Shortcuts) ── HTTPS POST ──┘                        ├─ Expenses
                                                                ├─ Accounts, Transfers, Balance history
+                                                               ├─ Budgets, Subscriptions, Rules
                                                                └─ Overview, Details (sheet dashboards)
 ```
 
@@ -37,6 +44,12 @@ Kalyta 2.0 needs the new `Code.gs`: paste it over the old one and deploy a new v
 New version). It adds editing transfers, balance adjustments (logged in *Balance history*, which gets *Change*, *Kind*
 and *ID* columns), a *Checked* column on *Accounts*, today's exchange rates and the "Recreate tab" repair. Until you
 redeploy, everything else keeps working and those actions show up as failed in Sync.
+
+### Updating to Kalyta 2.1
+
+Paste the new `Code.gs` again and deploy a new version. It adds three tabs, created on first use: *Budgets* (monthly
+limits in USD), *Subscriptions* and *Rules* (the existing keyword → category list, now editable from the app), plus a
+*Domain* column on *Accounts* for logos. Apple Pay records with an empty category show up in *Needs a category*.
 
 ## Develop
 
@@ -61,3 +74,7 @@ to `scripts/fetch-icons.sh` and run the script.
 
 The app keeps a copy of your data in the browser's local storage so it can work offline. The access key is
 stored only on your device; it is never part of this repository.
+
+App lock is local to the iPhone: the passcode is stored as a salted SHA-256 hash, and Face ID uses a passkey
+(WebAuthn) that never leaves the device. If you forget the passcode, reconnect with the web app URL and `VIEW_KEY`;
+your records stay in the Sheet. Account logos are site icons loaded from Google's favicon service and cached offline.

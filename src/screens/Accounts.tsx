@@ -73,7 +73,7 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
                         style={{ paddingRight: 14 }}
                         onClick={() => nav.push({ name: 'account', account: a.name })}
                       >
-                        <Avatar name={a.name} type={a.type} />
+                        <Avatar name={a.name} type={a.type} domain={a.domain} />
                         <span className="main">
                           <span className="title">{a.name}</span>
                           <span className="sub" style={{ display: 'block' }}>

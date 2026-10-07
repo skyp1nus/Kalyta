@@ -2,7 +2,8 @@ import { useSyncExternalStore } from 'react';
 
 // Per-device display settings. They never go to the sheet.
 export type Theme = 'auto' | 'dark' | 'light';
-export type Block = 'cards' | 'accounts' | 'debts' | 'recent' | 'places';
+export type Block = 'cards' | 'budgets' | 'upcoming' | 'accounts' | 'debts' | 'recent' | 'places';
+export type AutoLock = 'Immediately' | '1 min' | '5 min' | '15 min';
 
 export interface Prefs {
   theme: Theme;
@@ -10,20 +11,54 @@ export interface Prefs {
   cents: boolean;
   order: Block[];
   hidden: Block[];
+  ignoredSubs: string[]; // "Looks recurring" suggestions the user dismissed
+  lockOn: boolean;
+  lockMethod: 'face' | 'passcode';
+  autoLock: AutoLock;
+  passHash: string; // SHA-256 of salt + passcode
+  passSalt: string;
+  credId: string; // WebAuthn credential for Face ID
+  hide: boolean; // show amounts as •••
+  blurSw: boolean; // cover the app in the app switcher
+  seenVersion: string;
 }
 
 export const BASES = ['USD', 'PLN', 'EUR', 'UAH'];
-export const BLOCKS: Block[] = ['cards', 'accounts', 'debts', 'recent', 'places'];
+export const BLOCKS: Block[] = ['cards', 'budgets', 'upcoming', 'accounts', 'debts', 'recent', 'places'];
 const KEY = 'kalyta.prefs';
-const DEFAULTS: Prefs = { theme: 'auto', base: 'USD', cents: true, order: BLOCKS, hidden: [] };
+const DEFAULTS: Prefs = {
+  theme: 'auto',
+  base: 'USD',
+  cents: true,
+  order: BLOCKS,
+  hidden: [],
+  ignoredSubs: [],
+  lockOn: false,
+  lockMethod: 'face',
+  autoLock: '1 min',
+  passHash: '',
+  passSalt: '',
+  credId: '',
+  hide: false,
+  blurSw: true,
+  seenVersion: '',
+};
 
 function load(): Prefs {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULTS;
     const p = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Prefs>) };
-    // keep blocks added in later versions
-    p.order = [...p.order.filter((b) => BLOCKS.includes(b)), ...BLOCKS.filter((b) => !p.order.includes(b))];
+    // blocks added in later versions go where they sit by default
+    const order = p.order.filter((b) => BLOCKS.includes(b));
+    for (const b of BLOCKS) {
+      if (order.includes(b)) continue;
+      const before = BLOCKS.slice(0, BLOCKS.indexOf(b))
+        .reverse()
+        .find((x) => order.includes(x));
+      order.splice(before ? order.indexOf(before) + 1 : 0, 0, b);
+    }
+    p.order = order;
     return p;
   } catch {
     return DEFAULTS;

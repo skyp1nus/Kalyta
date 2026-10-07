@@ -6,6 +6,8 @@ import { SheetHead } from './common';
 
 const META: Record<Block, [string, string]> = {
   cards: ['Week & month', 'bar_chart'],
+  budgets: ['Budgets', 'savings'],
+  upcoming: ['Upcoming', 'event_repeat'],
   accounts: ['Accounts', 'account_balance_wallet'],
   debts: ['Debts', 'handshake'],
   recent: ['Recent transactions', 'receipt_long'],
