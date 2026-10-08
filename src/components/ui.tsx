@@ -2,6 +2,8 @@ import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState }
 import { accountDomain, accountLook, isPerson, logoUrls } from '../lib/meta';
 import { Face } from './Face';
 
+const EMOJI = /\p{Extended_Pictographic}/u;
+
 export function Icon({
   name,
   size,
@@ -15,6 +17,18 @@ export function Icon({
   className?: string;
   style?: CSSProperties;
 }) {
+  // categories can use an emoji instead of a Material symbol
+  if (EMOJI.test(name)) {
+    return (
+      <span
+        className={`emo ${className}`}
+        aria-hidden="true"
+        style={{ fontSize: size ? Math.round(size * 0.92) : undefined, ...style }}
+      >
+        {name}
+      </span>
+    );
+  }
   return (
     <span
       className={`ms ${className}`}

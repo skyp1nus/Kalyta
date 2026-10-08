@@ -2,7 +2,7 @@ import { type PointerEvent, useEffect, useRef, useState } from 'react';
 import { Icon, Toggle } from '../components/ui';
 import { txInputOf } from '../lib/entries';
 import { dayHeading, time } from '../lib/format';
-import { CATEGORY_META } from '../lib/meta';
+import { categoryMeta } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { kwOf, needsReview, norm, placeMatches } from '../lib/rules';
 import { enqueue } from '../lib/store';
@@ -163,7 +163,7 @@ export function ReviewSheet({ view }: { view: View }) {
           </div>
           <div className="review-cats">
             {view.categories.map((c) => {
-              const meta = CATEGORY_META[c] ?? CATEGORY_META.Other;
+              const meta = categoryMeta(c);
               return (
                 <button key={c} type="button" onClick={() => assign(c)}>
                   <span className="ic" style={{ background: meta.color }}>

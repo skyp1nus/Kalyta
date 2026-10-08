@@ -31,7 +31,7 @@ export function SettingsSheet({ view }: { view: View }) {
   const upd = useUpdate();
   const limits = Object.keys(view.budgets.cats).length + (view.budgets.total ? 1 : 0);
   const activeSubs = subStates(view).filter((s) => !s.sub.paused).length;
-  const goTo = (name: 'subs' | 'rules' | 'accounts') => {
+  const goTo = (name: 'subs' | 'rules' | 'accounts' | 'categories') => {
     nav.close();
     nav.reset([{ name }]);
   };
@@ -67,6 +67,13 @@ export function SettingsSheet({ view }: { view: View }) {
         value: String(activeSubs),
         chev: true,
         onClick: () => goTo('subs'),
+      },
+      {
+        icon: 'donut_small',
+        label: 'Categories',
+        value: String(view.categories.length + view.incomeCategories.length),
+        chev: true,
+        onClick: () => goTo('categories'),
       },
       {
         icon: 'rule',

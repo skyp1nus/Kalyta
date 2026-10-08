@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../components/ui';
 import { MONTHS } from '../lib/format';
-import { CATEGORY_META } from '../lib/meta';
+import { categoryMeta } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { monthSummary, shiftYm } from '../lib/stats';
 import { enqueue } from '../lib/store';
@@ -141,7 +141,7 @@ export function BudgetsSheet({ view }: { view: View }) {
       <div className="sheet-section">Categories</div>
       <div className="group">
         {view.categories.map((c, i) => {
-          const meta = CATEGORY_META[c] ?? CATEGORY_META.Other;
+          const meta = categoryMeta(c);
           const lv = prevCats.get(c) ?? 0;
           return (
             <div key={c}>

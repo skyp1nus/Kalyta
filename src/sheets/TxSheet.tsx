@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AmountInput, Avatar, Icon, Segmented } from '../components/ui';
 import { deletedMessage, deleteEntry } from '../lib/entries';
 import { nowLocal, parseAmount } from '../lib/format';
-import { CATEGORY_META, CURRENCIES, categoryMeta, INCOME_META, isDebt } from '../lib/meta';
+import { CURRENCIES, categoryMeta, INCOME_META, isDebt, isIncomeCat } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { newId } from '../lib/outbox';
 import { kwOf, norm, placeMatches, ruleFor } from '../lib/rules';
@@ -21,7 +21,7 @@ function lastAccount(view: View, kind: Kind): string {
   const own = view.accounts.filter((a) => !isDebt(a)).map((a) => a.name);
   for (let i = view.tx.length - 1; i >= 0; i--) {
     const t = view.tx[i];
-    if ((t.category === view.income) === (kind === 'income') && own.includes(t.account)) return t.account;
+    if (isIncomeCat(t.category) === (kind === 'income') && own.includes(t.account)) return t.account;
   }
   return own[0] ?? '';
 }
@@ -42,18 +42,18 @@ export function TxSheet({
   const nav = useNav();
   const money = useMoney(view);
   const info = syncInfo(useStore());
-  const initialKind: Kind = edit
-    ? edit.category === view.income
-      ? 'income'
-      : 'expense'
-    : (type ?? 'expense');
+  const initialKind: Kind = edit ? (isIncomeCat(edit.category) ? 'income' : 'expense') : (type ?? 'expense');
   const initialAccount = edit?.account ?? presetAccount ?? lastAccount(view, initialKind);
   const accountCurrency = (name: string) => view.accounts.find((a) => a.name === name)?.currency;
 
   const [kind, setKind] = useState<Kind>(initialKind);
   const [amount, setAmount] = useState(edit ? String(edit.amount) : '');
   const [currency, setCurrency] = useState(edit?.currency ?? accountCurrency(initialAccount) ?? 'PLN');
-  const [category, setCategory] = useState(edit && edit.category !== view.income ? edit.category : '');
+  const [category, setCategory] = useState(edit && !isIncomeCat(edit.category) ? edit.category : '');
+  // income gets its own category (Salary, Bonus…); the catch-all "Income" when none is picked
+  const [incomeCat, setIncomeCat] = useState(
+    edit && isIncomeCat(edit.category) && edit.category !== view.income ? edit.category : '',
+  );
   const [place, setPlace] = useState(edit?.merchant ?? '');
   const [account, setAccount] = useState(initialAccount);
   const [accountPicked, setAccountPicked] = useState(!!edit || !!presetAccount);
@@ -67,14 +67,20 @@ export function TxSheet({
   const n = parseAmount(amount);
   const valid = n > 0;
   const color =
-    kind === 'income' ? INCOME_META.color : category ? categoryMeta(category, view.income).color : '#8e8e93';
+    kind === 'income'
+      ? incomeCat
+        ? categoryMeta(incomeCat).color
+        : INCOME_META.color
+      : category
+        ? categoryMeta(category, view.income).color
+        : '#8e8e93';
   useEffect(() => setTint(tintFor(color)), [color, setTint]);
 
   const suggestions = useMemo(() => {
     if (place) return [];
     const counts = new Map<string, number>();
     for (const t of view.tx) {
-      if (!t.merchant || (t.category === view.income) !== (kind === 'income')) continue;
+      if (!t.merchant || isIncomeCat(t.category) !== (kind === 'income')) continue;
       if (kind === 'expense' && category && t.category !== category) continue;
       counts.set(t.merchant, (counts.get(t.merchant) ?? 0) + 1);
     }
@@ -108,7 +114,7 @@ export function TxSheet({
     ? view.tx.filter(
         (t) =>
           t.id !== edit?.id &&
-          t.category !== view.income &&
+          !isIncomeCat(t.category) &&
           t.category !== category &&
           t.merchant &&
           placeMatches(kw, t.merchant),
@@ -123,7 +129,7 @@ export function TxSheet({
     const m = monthSummary(view, ym);
     // records without a known category count as Other, like in Statistics
     const catOf = (c: string) => (view.categories.includes(c) ? c : 'Other');
-    const wasThisMonth = !!edit && edit.category !== view.income && edit.date.startsWith(ym);
+    const wasThisMonth = !!edit && !isIncomeCat(edit.category) && edit.date.startsWith(ym);
     const check = (label: string, lim: number | undefined, before: number, old: number) => {
       if (!lim) return null;
       const after = before - old + usdNow;
@@ -155,7 +161,7 @@ export function TxSheet({
       currency,
       merchant: place.trim(),
       account,
-      category: kind === 'income' ? view.income : category,
+      category: kind === 'income' ? incomeCat || view.income : category,
       note: note.trim(),
     };
     // work out the budget warning against the data before this change
@@ -266,7 +272,7 @@ export function TxSheet({
       {kind === 'expense' && (
         <div className="cat-chips">
           {view.categories.map((c) => {
-            const meta = CATEGORY_META[c] ?? CATEGORY_META.Other;
+            const meta = categoryMeta(c);
             return (
               <button
                 key={c}
@@ -286,6 +292,30 @@ export function TxSheet({
               </button>
             );
           })}
+        </div>
+      )}
+      {kind === 'income' && view.incomeCategories.some((c) => c !== view.income) && (
+        <div className="cat-chips">
+          {view.incomeCategories
+            .filter((c) => c !== view.income)
+            .map((c) => {
+              const meta = categoryMeta(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={incomeCat === c}
+                  className="cat-chip"
+                  style={{ borderColor: incomeCat === c ? meta.color : 'transparent' }}
+                  onClick={() => setIncomeCat(incomeCat === c ? '' : c)}
+                >
+                  <span className="ic" style={{ background: meta.color }}>
+                    <Icon name={meta.icon} />
+                  </span>
+                  {c}
+                </button>
+              );
+            })}
         </div>
       )}
       {kind === 'expense' && !category && !edit && (

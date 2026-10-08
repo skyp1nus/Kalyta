@@ -1,5 +1,5 @@
 import { time } from './format';
-import { ADJUST_META, categoryMeta, TRANSFER_META } from './meta';
+import { ADJUST_META, categoryMeta, isIncomeCat, TRANSFER_META } from './meta';
 import type { Money } from './money';
 import { accountOf } from './outbox';
 import { discardOp, enqueue, getState, putBackOps, takeOps } from './store';
@@ -74,7 +74,7 @@ export function rowLook(e: Entry, view: View, money: Money): RowLook {
     };
   }
   const t = e.t;
-  const income = t.category === view.income;
+  const income = isIncomeCat(t.category);
   const cat = income ? 'Income' : t.category || 'Other';
   const meta = categoryMeta(t.category, view.income);
   return {
@@ -131,10 +131,10 @@ export function deletedMessage(e: Entry): string {
 }
 
 // A stored record as form input, for re-sending it with changes
-export function txInputOf(t: Tx, view: View, patch: Partial<TxInput> = {}): TxInput {
+export function txInputOf(t: Tx, _view: View, patch: Partial<TxInput> = {}): TxInput {
   return {
     id: t.id,
-    kind: t.category === view.income ? 'income' : 'expense',
+    kind: isIncomeCat(t.category) ? 'income' : 'expense',
     date: t.date,
     amount: String(t.amount),
     currency: t.currency,

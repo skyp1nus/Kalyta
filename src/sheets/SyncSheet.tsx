@@ -79,6 +79,10 @@ function describe(
         title: `New: ${op.acc.name}`,
         amt: money.n(parseAmount(op.acc.balance || '0') || 0, op.acc.currency),
       };
+    case 'category':
+      return { ...categoryMeta(op.cat.name), title: `Category “${op.cat.name}”`, amt: op.cat.kind };
+    case 'deleteCategory':
+      return { icon: 'delete', color: grey, title: `Delete category “${op.name}”`, amt: '' };
     case 'deleteAccount':
       return { icon: 'delete', color: grey, title: `Delete ${op.account}`, amt: '' };
   }

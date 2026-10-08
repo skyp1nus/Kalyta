@@ -3,7 +3,7 @@ import { usePinnedGlow } from '../components/hooks';
 import { BackButton, CircleButton, EmptyState, Icon, MonthHead } from '../components/ui';
 import { saveCsv } from '../lib/csv';
 import { MONTHS, monthName, SHORT_MONTHS } from '../lib/format';
-import { CATEGORY_META } from '../lib/meta';
+import { categoryMeta } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { comparison, monthSummary, shiftYm } from '../lib/stats';
 import { BUDGET_COLOR, BUDGET_TEXT, budgetState } from '../lib/subs';
@@ -50,7 +50,7 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
           const a = acc;
           const b = acc + (v / m.spent) * 100;
           acc = b;
-          const c = (CATEGORY_META[k] ?? CATEGORY_META.Other).color;
+          const c = categoryMeta(k).color;
           return `${c} ${(a + gap / 2).toFixed(2)}% ${(b - gap / 2).toFixed(2)}%, transparent ${(b - gap / 2).toFixed(2)}% ${b.toFixed(2)}%`;
         })
         .join(', ')})`
@@ -269,7 +269,7 @@ export const Statistics = memo(function Statistics({ view, ym: startYm }: { view
                     </div>
                   </div>
                   {m.cats.map(([k, v], i) => {
-                    const meta = CATEGORY_META[k] ?? CATEGORY_META.Other;
+                    const meta = categoryMeta(k);
                     const pv = prevCats.get(k) ?? 0;
                     const d = pv ? Math.round((v / pv - 1) * 100) : null;
                     const lim = view.budgets.cats[k] ?? 0;

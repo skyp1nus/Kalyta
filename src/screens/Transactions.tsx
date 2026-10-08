@@ -4,7 +4,7 @@ import { SwipeRow } from '../components/rows';
 import { BackButton, CircleButton, EmptyState, Icon, MonthHead } from '../components/ui';
 import { allEntries, type Entry, entryKey } from '../lib/entries';
 import { dayHeading, monthName } from '../lib/format';
-import { CATEGORY_META } from '../lib/meta';
+import { categoryMeta, isIncomeCat } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { shiftYm } from '../lib/stats';
 import { plural } from '../lib/syncState';
@@ -22,7 +22,7 @@ function matches(e: Entry, filter: string, income: string): boolean {
   if (filter === 'all') return true;
   if (filter === 'transfer') return e.kind === 'transfer';
   if (e.kind !== 'tx') return false;
-  const isIncome = e.t.category === income;
+  const isIncome = isIncomeCat(e.t.category) || e.t.category === income;
   if (filter === 'expense') return !isIncome;
   if (filter === 'income') return isIncome;
   return (e.t.category || 'Other') === filter;
@@ -77,13 +77,13 @@ export const Transactions = memo(function Transactions({
         out.push(g);
       }
       g.items.push(e);
-      if (e.kind === 'tx' && e.t.category !== view.income) g.spent += e.t.usd ?? 0;
+      if (e.kind === 'tx' && !isIncomeCat(e.t.category)) g.spent += e.t.usd ?? 0;
     }
     return out;
   }, [shown, view.income]);
 
   const monthSpent = inMonth.reduce(
-    (s, e) => s + (e.kind === 'tx' && e.t.category !== view.income ? (e.t.usd ?? 0) : 0),
+    (s, e) => s + (e.kind === 'tx' && !isIncomeCat(e.t.category) ? (e.t.usd ?? 0) : 0),
     0,
   );
   const filtered = filter !== 'all' || q.trim() !== '';
@@ -107,7 +107,7 @@ export const Transactions = memo(function Transactions({
     ...view.categories.map((c) => ({
       k: c,
       label: c,
-      color: (CATEGORY_META[c] ?? CATEGORY_META.Other).color,
+      color: categoryMeta(c).color,
     })),
   ];
 

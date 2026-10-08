@@ -20,10 +20,89 @@ export const TRANSFER_META: CategoryMeta = { color: '#8e8e93', icon: 'swap_horiz
 export const ADJUST_META: CategoryMeta = { color: '#636366', icon: 'tune' };
 const EXTRA = ['#ff9f0a', '#0a84ff', '#32ade6', '#ff375f', '#bf5af2', '#5e5ce6', '#30b0c7', '#a2845e'];
 
-export function categoryMeta(category: string, income: string): CategoryMeta {
-  if (category === income) return INCOME_META;
-  return CATEGORY_META[category] ?? CATEGORY_META.Other;
+// Categories as the sheet defines them (Categories tab): which ones are income, and the emoji and
+// colour each was given. buildView fills this in; built-in categories keep their own icons.
+export type CategoryKind = 'expense' | 'income';
+export type CategoryLookRow = [name: string, kind: string, emoji: string, color: string];
+const looks = new Map<string, { kind: CategoryKind; emoji: string; color: string }>();
+let incomeNames = new Set<string>(['Income']);
+
+export function setCategoryLooks(rows: CategoryLookRow[], income: string) {
+  looks.clear();
+  incomeNames = new Set([income]);
+  for (const [name, kind, emoji, color] of rows) {
+    const k: CategoryKind = kind === 'income' ? 'income' : 'expense';
+    looks.set(name, { kind: k, emoji, color });
+    if (k === 'income') incomeNames.add(name);
+  }
 }
+
+// Money coming in: any income category (Salary, Bonus…) or the catch-all "Income"
+export function isIncomeCat(category: string | null | undefined): boolean {
+  return !!category && incomeNames.has(category);
+}
+
+export function categoryMeta(category: string, _income?: string): CategoryMeta {
+  const own = looks.get(category);
+  const base = incomeNames.has(category) ? INCOME_META : (CATEGORY_META[category] ?? CATEGORY_META.Other);
+  return { color: own?.color || base.color, icon: own?.emoji || base.icon };
+}
+
+// Colours and emoji offered for new categories
+export const CATEGORY_COLORS = [
+  '#ff9f0a',
+  '#ff375f',
+  '#bf5af2',
+  '#5e5ce6',
+  '#0a84ff',
+  '#32ade6',
+  '#30b0c7',
+  '#30d158',
+  '#ffd60a',
+  '#ac8e68',
+  '#ff6482',
+  '#8e8e93',
+];
+export const CATEGORY_EMOJI = [
+  '🛒',
+  '🍔',
+  '☕',
+  '🍽️',
+  '🚕',
+  '🚗',
+  '⛽',
+  '🚌',
+  '✈️',
+  '🏠',
+  '💡',
+  '📱',
+  '💻',
+  '🎮',
+  '🎬',
+  '🎁',
+  '👕',
+  '💄',
+  '💊',
+  '🏋️',
+  '🐶',
+  '🎓',
+  '📚',
+  '🔧',
+  '🧾',
+  '🏦',
+  '❤️',
+  '🎉',
+  '💰',
+  '💵',
+  '💸',
+  '📈',
+  '🎰',
+  '👪',
+  '📦',
+  '🤝',
+  '🏆',
+  '💼',
+];
 
 export const CURRENCY_NAMES: Record<string, string> = {
   PLN: 'Polish złoty',

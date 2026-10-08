@@ -1,3 +1,4 @@
+import { isIncomeCat } from './meta';
 import type { View } from './types';
 
 const HEAD = [
@@ -25,7 +26,7 @@ export function toCsv(view: View, ym = ''): string {
   const rows: Array<Array<string | number | null>> = [];
   for (const t of view.tx) {
     if (!t.date.startsWith(ym)) continue;
-    const income = t.category === view.income;
+    const income = isIncomeCat(t.category);
     rows.push([
       t.date.replace('T', ' '),
       income ? 'income' : 'expense',

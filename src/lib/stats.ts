@@ -1,4 +1,5 @@
 import { MONTHS, SHORT_MONTHS } from './format';
+import { isIncomeCat } from './meta';
 import type { Tx, View } from './types';
 
 export function shiftYm(ym: string, k: number): string {
@@ -17,8 +18,8 @@ export function sumUsd(rows: Tx[]): number {
   return rows.reduce((s, t) => s + (t.usd ?? 0), 0);
 }
 
-export function isIncome(view: Pick<View, 'income'>, t: Tx): boolean {
-  return t.category === view.income;
+export function isIncome(_view: Pick<View, 'income'>, t: Tx): boolean {
+  return isIncomeCat(t.category);
 }
 
 export interface MonthStats {
@@ -79,7 +80,7 @@ export function netWorth(view: View): number {
 }
 
 export function categoryColor(view: View, category: string): string {
-  if (category === view.income) return '#1d9e75';
+  if (isIncomeCat(category)) return '#1d9e75';
   const i = view.categories.indexOf(category);
   return view.colors[i >= 0 ? i : view.categories.indexOf('Other')] ?? '#888780';
 }

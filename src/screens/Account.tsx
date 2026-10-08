@@ -4,7 +4,7 @@ import { EntryRow } from '../components/rows';
 import { Avatar, BackButton, Icon, SectionHead } from '../components/ui';
 import { allEntries, touchesAccount } from '../lib/entries';
 import { MONTHS, shortDate } from '../lib/format';
-import { accountGroup, accountLook, isDebt, isPerson } from '../lib/meta';
+import { accountGroup, accountLook, isDebt, isIncomeCat, isPerson } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { discardOp, enqueue } from '../lib/store';
 import type { View } from '../lib/types';
@@ -53,7 +53,7 @@ export const AccountScreen = memo(function AccountScreen({ view, name }: { view:
       if (e.t.to.toLowerCase() === name.toLowerCase()) tin += inAcc(e.t.received, e.t.toCurrency);
       else tout += inAcc(e.t.sent, e.t.fromCurrency);
     } else if (e.kind === 'tx') {
-      if (e.t.category === view.income) tin += inAcc(e.t.amount, e.t.currency);
+      if (isIncomeCat(e.t.category)) tin += inAcc(e.t.amount, e.t.currency);
       else tout += inAcc(e.t.amount, e.t.currency);
     }
   }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { CircleButton, Icon, Toggle } from '../components/ui';
 import { dayHeading, time } from '../lib/format';
-import { CATEGORY_META } from '../lib/meta';
+import { categoryMeta } from '../lib/meta';
 
 export function SheetHead({ left, title, right }: { left: ReactNode; title: string; right?: ReactNode }) {
   return (
@@ -108,7 +108,7 @@ export function CategoryChips({
   return (
     <div className="cat-chips" style={style}>
       {categories.map((c) => {
-        const meta = CATEGORY_META[c] ?? CATEGORY_META.Other;
+        const meta = categoryMeta(c);
         return (
           <button
             key={c}

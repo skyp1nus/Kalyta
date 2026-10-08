@@ -87,6 +87,8 @@ export interface ServerData {
   subscriptions?: Subscription[];
   rules?: Array<[kw: string, cat: string]>;
   categories: string[];
+  incomeCategories?: string[];
+  categoryLooks?: Array<[name: string, kind: string, emoji: string, color: string]>;
   colors: string[];
   income: string;
   base: string;
@@ -165,7 +167,9 @@ export type OpBody =
   | { action: 'deleteRule'; kw: string }
   | { action: 'accountDomain'; account: string; domain: string }
   | { action: 'addAccount'; acc: NewAccount }
-  | { action: 'deleteAccount'; account: string };
+  | { action: 'deleteAccount'; account: string }
+  | { action: 'category'; cat: { name: string; kind: 'expense' | 'income'; emoji: string; color: string } }
+  | { action: 'deleteCategory'; name: string };
 
 export type AccountType = 'Account' | 'Owed to you' | 'You owe';
 
@@ -201,8 +205,10 @@ export interface View {
   budgets: Budgets;
   subscriptions: Subscription[];
   rules: Rule[];
-  categories: string[];
+  categories: string[]; // expense categories
+  incomeCategories: string[];
+  categoryLooks: Array<[name: string, kind: string, emoji: string, color: string]>;
   colors: string[];
-  income: string;
+  income: string; // the catch-all income category
   today: string;
 }

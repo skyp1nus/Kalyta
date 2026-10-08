@@ -30,6 +30,27 @@ const COL = { date: 1, amount: 2, currency: 3, merchant: 4, card: 5, category: 6
 const CATEGORIES = ['Food', 'Transport', 'Home', 'Lifestyle', 'Subscriptions', 'Business', 'Other'];
 const INCOME = 'Income';              // category for money coming in (salary, invoices, refunds)
 const CATEGORY_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7'];
+
+// Categories live on the Categories tab (Name, Kind, Emoji, Color) and can be added or removed in
+// the app. These are the defaults the tab starts with; an empty Emoji keeps the app's own icon.
+const CATEGORIES_SHEET = 'Categories';
+const CATEGORY_HEADERS = ['Name', 'Kind', 'Emoji', 'Color'];
+const DEFAULT_CATEGORIES = [
+  ['Food', 'expense', '', '#ff9f0a'],
+  ['Transport', 'expense', '', '#0a84ff'],
+  ['Home', 'expense', '', '#32ade6'],
+  ['Lifestyle', 'expense', '', '#ff375f'],
+  ['Subscriptions', 'expense', '', '#bf5af2'],
+  ['Business', 'expense', '', '#5e5ce6'],
+  ['Other', 'expense', '', '#8e8e93'],
+  ['Salary', 'income', '💰', '#30d158'],
+  ['Bonus', 'income', '🎰', '#ffd60a'],
+  ['Famely Care', 'income', '👪', '#64d2ff'],
+  ['Gifts', 'income', '🎁', '#ff6482'],
+  ['Investment', 'income', '💸', '#30b0c7'],
+  ['Sale', 'income', '📦', '#ac8e68'],
+  ['Income', 'income', '💵', '#34c759'],   // anything else coming in
+];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const CURRENCIES = [
@@ -158,6 +179,8 @@ function handleApi(body) {
     else if (action === 'deleteRule') deleteRule(clean(body.kw));
     else if (action === 'accountDomain') setAccountDomain(clean(body.account), clean(body.domain));
     else if (action === 'addAccount') id = apiAddAccount(body.acc || {});
+    else if (action === 'category') id = saveCategory(body.cat || {});
+    else if (action === 'deleteCategory') id = deleteCategory(clean(body.name));
     else if (action === 'deleteAccount') id = apiDeleteAccount(clean(body.account));
     else if (action === 'balance') {
       if (!clean(body.account)) throw new Error('Pick an account');
@@ -205,7 +228,9 @@ function txFields(tx) {
     currency: (clean(tx.currency) || parsed.currency || LOCAL_CURRENCY).toUpperCase(),
     merchant: merchant,
     card: clean(tx.account),
-    category: kind === 'income' ? INCOME : (clean(tx.category) || autoCategory(merchant) || 'Other'),
+    category: kind === 'income'
+      ? (isIncomeCategory(tx.category) ? clean(tx.category) : INCOME)
+      : (clean(tx.category) || autoCategory(merchant) || 'Other'),
     note: clean(tx.note),
   };
 }
@@ -348,6 +373,7 @@ function repairTabs() {
   getRulesSheet();
   getBudgetsSheet();
   getSubsSheet();
+  getCategoriesSheet();
 }
 
 // ----- Kalyta 2.1: rules, budgets, subscriptions -----
@@ -370,7 +396,7 @@ function ensureTab(name, headers) {
   if (head.join('|') === headers.join('|')) return sh;
   // never overwrite row 1 if it holds data: a Rules tab made by hand may start with a rule
   const blank = head.every(v => clean(v) === '');
-  const looksLikeRule = name === RULES_SHEET && CATEGORIES.indexOf(clean(head[1])) >= 0;
+  const looksLikeRule = name === RULES_SHEET && CATEGORIES.concat(['Income']).indexOf(clean(head[1])) >= 0;
   if (looksLikeRule) sh.insertRowBefore(1);
   if (blank || looksLikeRule) sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
   return sh;
@@ -399,13 +425,105 @@ function deleteById(sh, col, id) {
   return id;
 }
 
+let categoriesCache = null;
+
+function getCategoriesSheet() {
+  const sh = ensureTab(CATEGORIES_SHEET, CATEGORY_HEADERS);
+  if (sh.getLastRow() < 2) {
+    sh.getRange(2, 1, DEFAULT_CATEGORIES.length, 4).setValues(DEFAULT_CATEGORIES);
+  }
+  return sh;
+}
+
+// [{ name, kind, emoji, color }] in the tab's order
+function readCategories() {
+  if (categoriesCache) return categoriesCache;
+  const sh = getCategoriesSheet();
+  categoriesCache = rows(sh, 4)
+    .filter(r => clean(r[0]))
+    .map(r => ({
+      name: clean(r[0]),
+      kind: clean(r[1]).toLowerCase() === 'income' ? 'income' : 'expense',
+      emoji: clean(r[2]),
+      color: clean(r[3]),
+    }));
+  return categoriesCache;
+}
+
+const expenseCategories = () => readCategories().filter(c => c.kind === 'expense').map(c => c.name);
+const incomeCategories = () => readCategories().filter(c => c.kind === 'income').map(c => c.name);
+const isIncomeCategory = name => clean(name) === INCOME || incomeCategories().indexOf(clean(name)) >= 0;
+
+// Adds a category or changes its emoji and colour
+function saveCategory(c) {
+  const name = clean(c.name);
+  if (!name) throw new Error('Enter a name');
+  if (name.length > 30) throw new Error('The name is too long');
+  const kind = clean(c.kind) === 'income' ? 'income' : 'expense';
+  const sh = getCategoriesSheet();
+  const list = rows(sh, 4);
+  const i = list.findIndex(r => clean(r[0]).toLowerCase() === name.toLowerCase());
+  const row = [name, kind, clean(c.emoji), clean(c.color)];
+  if (i >= 0) {
+    if ((clean(list[i][1]).toLowerCase() === 'income' ? 'income' : 'expense') !== kind) {
+      throw new Error('There is already an ' + clean(list[i][1]) + ' category named ' + name);
+    }
+    sh.getRange(i + 2, 1, 1, 4).setValues([row]);
+  } else {
+    sh.getRange(sh.getLastRow() + 1, 1, 1, 4).setValues([row]);
+  }
+  categoriesCache = null;
+  return name;
+}
+
+// Removes a category; its records, rules and budget move to Other (or Income for income)
+function deleteCategory(name) {
+  name = clean(name);
+  if (name === 'Other' || name === INCOME) throw new Error(name + ' is always there');
+  const sh = getCategoriesSheet();
+  const list = rows(sh, 4);
+  const i = list.findIndex(r => clean(r[0]) === name);
+  if (i < 0) return name;
+  const income = clean(list[i][1]).toLowerCase() === 'income';
+  const to = income ? INCOME : 'Other';
+  sh.deleteRow(i + 2);
+  categoriesCache = null;
+
+  const exp = getSheet();
+  const n = exp.getLastRow() - 1;
+  if (n > 0) {
+    const range = exp.getRange(2, COL.category, n, 1);
+    const cats = range.getValues();
+    let changed = false;
+    cats.forEach(r => {
+      if (clean(r[0]) === name) {
+        r[0] = to;
+        changed = true;
+      }
+    });
+    if (changed) range.setValues(cats);
+  }
+  const rs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RULES_SHEET);
+  if (rs) {
+    const kept = rows(rs, 2).filter(r => clean(r[0]) && clean(r[1]) !== name);
+    if (rs.getLastRow() > 1) rs.getRange(2, 1, rs.getLastRow() - 1, 2).clearContent();
+    if (kept.length) rs.getRange(2, 1, kept.length, 2).setValues(kept);
+  }
+  const b = readBudgets();
+  if (b.cats[name]) {
+    delete b.cats[name];
+    saveBudgets(b.total, b.cats);
+  }
+  return name;
+}
+
 function saveBudgets(total, cats) {
   const sh = getBudgetsSheet();
   if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
   const out = [];
   const t = Number(total) || 0;
   if (t > 0) out.push(['Total', Math.round(t * 100) / 100]);
-  CATEGORIES.forEach(c => {
+  expenseCategories().forEach(c => {
     const v = Number(cats[c]) || 0;
     if (v > 0) out.push([c, Math.round(v * 100) / 100]);
   });
@@ -469,7 +587,7 @@ function readSubscriptions() {
 // One rule per keyword: a new rule for the same keyword replaces the old one
 function saveRule(kw, cat, past, replaces) {
   if (norm(kw).length < 2) throw new Error('Keyword is too short');
-  if (CATEGORIES.indexOf(cat) < 0) throw new Error('Unknown category: ' + cat);
+  if (expenseCategories().indexOf(cat) < 0) throw new Error('Unknown category: ' + cat);
   const sh = getRulesSheet();
   const drop = [norm(kw), norm(replaces)].filter(Boolean);
   const kept = rows(sh, 2).filter(r => clean(r[0]) && drop.indexOf(norm(r[0])) < 0);
@@ -499,7 +617,7 @@ function recategorize(kw, cat) {
   let changed = false;
   cats.forEach((r, i) => {
     const cur = clean(r[0]);
-    if (cur !== INCOME && norm(places[i][0]).indexOf(k) >= 0 && cur !== cat) {
+    if (!isIncomeCategory(cur) && norm(places[i][0]).indexOf(k) >= 0 && cur !== cat) {
       r[0] = cat;
       changed = true;
     }
@@ -605,7 +723,7 @@ function balanceNow(row) {
   exp.getRange(2, 1, n, COL.base).getValues().forEach(t => {
     if (!(t[COL.date - 1] instanceof Date) || t[COL.date - 1] <= checked) return;
     if (resolveAccountName(t[COL.card - 1], names).toLowerCase() !== name) return;
-    const sign = clean(t[COL.category - 1]) === INCOME ? 1 : -1;
+    const sign = isIncomeCategory(t[COL.category - 1]) ? 1 : -1;
     const tc = clean(t[COL.currency - 1]).toUpperCase() || LOCAL_CURRENCY;
     if (stable(tc) === stable(cur)) { sum += sign * (Number(t[COL.amount - 1]) || 0); return; }
     if (perUnit == null) perUnit = stable(cur) === 'USD' ? 1 : (currentRates()[cur] || 0);
@@ -725,7 +843,9 @@ function getApiData() {
     budgets: readBudgets(),
     subscriptions: readSubscriptions(),
     rules: readRules(),
-    categories: CATEGORIES,
+    categories: expenseCategories(),
+    incomeCategories: incomeCategories(),
+    categoryLooks: readCategories().map(c => [c.name, c.kind, c.emoji, c.color]),
     colors: CATEGORY_COLORS,
     income: INCOME,
     base: BASE_CURRENCY,
@@ -972,6 +1092,7 @@ const INCOME_COLOR = '#1D9E75';
 function setupDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   getSheet();
+  getCategoriesSheet();   // the dashboards read income categories from it
   getAccountsSheet();
   backfillBase();
   const old = ss.getSheetByName(OLD_DASHBOARD_SHEET);
@@ -982,11 +1103,22 @@ function setupDashboard() {
   ss.toast('Overview and Details are ready', 'Expenses');
 }
 
+// Income in the dashboards = every category marked "income" on the Categories tab
+const INCOME_LIST = 'FILTER(' + q('Categories') + '$A$2:$A, ' + q('Categories') + '$B$2:$B="income")';
+function incomeF(J, F, conds) {
+  return 'SUM(ARRAYFORMULA(SUMIFS(' + J + ', ' + conds + ', ' + F + ', ' + INCOME_LIST + ')))';
+}
+function spentF(J, F, conds) {
+  return '(SUMIFS(' + J + ', ' + conds + ')-' + incomeF(J, F, conds) + ')';
+}
+function spentCountF(F, conds) {
+  return '(COUNTIFS(' + conds + ')-SUM(ARRAYFORMULA(COUNTIFS(' + conds + ', ' + F + ', ' + INCOME_LIST + '))))';
+}
+
 function buildOverview(ss) {
   const sh = freshSheet(ss, OVERVIEW_SHEET, 0, 14);
   const E = q(SHEET_NAME), AC = q(ACCOUNTS_SHEET);
   const A = E + '$A:$A', F = E + '$F:$F', J = E + '$J:$J';
-  const NOT_INCOME = F + ', "<>' + INCOME + '"';
   const thisMonth = A + ', ">="&$L$2, ' + A + ', "<"&$L$3';
 
   // Layout: B..I content, J spacer, K..N hidden helpers
@@ -1001,8 +1133,8 @@ function buildOverview(ss) {
   sh.getRange('L2').setFormula('=EOMONTH(TODAY(), -1)+1');
   sh.getRange('L3').setFormula('=EOMONTH(TODAY(), 0)+1');
   sh.getRange('L4').setFormula('=EOMONTH(TODAY(), -2)+1');
-  sh.getRange('L5').setFormula('=SUMIFS(' + J + ', ' + A + ', ">="&$L$4, ' + A + ', "<"&$L$2, ' + NOT_INCOME + ')');
-  sh.getRange('L6').setFormula('=SUMIFS(' + J + ', ' + A + ', ">="&$L$4, ' + A + ', "<"&$L$2, ' + F + ', "' + INCOME + '")');
+  sh.getRange('L5').setFormula('=' + spentF(J, F, A + ', ">="&$L$4, ' + A + ', "<"&$L$2'));
+  sh.getRange('L6').setFormula('=' + incomeF(J, F, A + ', ">="&$L$4, ' + A + ', "<"&$L$2'));
 
   // Net worth
   sh.getRange('B5').setValue('Net worth').setFontColor(THEME.muted).setFontSize(10);
@@ -1035,11 +1167,11 @@ function buildOverview(ss) {
   // This month
   section(sh, 'B24', '="This month · "&TEXT(TODAY(), "mmmm")&"  (day "&DAY(TODAY())&" of "&DAY(EOMONTH(TODAY(), 0))&")"');
   kpiTiles(sh, 25, [
-    ['B', 'Spent so far', '=SUMIFS(' + J + ', ' + thisMonth + ', ' + NOT_INCOME + ')', MONEY,
-      '=COUNTIFS(' + thisMonth + ', ' + NOT_INCOME + ')&" transactions"'],
+    ['B', 'Spent so far', '=' + spentF(J, F, thisMonth), MONEY,
+      '=' + spentCountF(F, thisMonth) + '&" transactions"'],
     ['D', 'Per day', '=$B$26/DAY(TODAY())', MONEY, '="last month: "&TEXT($L$5/DAY(EOMONTH(TODAY(), -1)), "$#,##0")'],
     ['F', 'On pace for', '=$D$26*DAY(EOMONTH(TODAY(), 0))', MONEY, '="last month: "&TEXT($L$5, "$#,##0")'],
-    ['H', 'Income', '=SUMIFS(' + J + ', ' + thisMonth + ', ' + F + ', "' + INCOME + '")', MONEY,
+    ['H', 'Income', '=' + incomeF(J, F, thisMonth), MONEY,
       '="last month: "&TEXT($L$6, "$#,##0")'],
   ]);
 
@@ -1067,8 +1199,8 @@ function buildOverview(ss) {
     const r = 10 + i;
     const range = A + ', ">="&(EOMONTH(TODAY(), ' + (i - 7) + ')+1), ' + A + ', "<"&(EOMONTH(TODAY(), ' + (i - 6) + ')+1)';
     sh.getRange('L' + r).setFormula('=TEXT(EOMONTH(TODAY(), ' + (i - 7) + ')+1, "mmm")');
-    sh.getRange('M' + r).setFormula('=SUMIFS(' + J + ', ' + range + ', ' + NOT_INCOME + ')');
-    sh.getRange('N' + r).setFormula('=SUMIFS(' + J + ', ' + range + ', ' + F + ', "' + INCOME + '")');
+    sh.getRange('M' + r).setFormula('=' + spentF(J, F, range));
+    sh.getRange('N' + r).setFormula('=' + incomeF(J, F, range));
   }
   sh.insertChart(sh.newChart().asColumnChart()
     .addRange(sh.getRange('L10:N16'))
@@ -1092,7 +1224,6 @@ function buildDetails(ss) {
   const E = q(SHEET_NAME);
   const A = E + '$A:$A', F = E + '$F:$F', J = E + '$J:$J';
   const col2 = c => E + c + '2:' + c;   // 'Expenses'!A2:A
-  const NOT_INCOME = F + ', "<>' + INCOME + '"';
   const catCols = ['C', 'D', 'E', 'F', 'G', 'H'];   // named categories; I = Other, J = Spent, K = Income, L = Net
   const tableCols = ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
   const now = new Date();
@@ -1105,7 +1236,7 @@ function buildDetails(ss) {
   sh.getRange('A:M').setFontColor(THEME.ink).setVerticalAlignment('middle');
 
   sh.getRange('B2').setValue('Details').setFontSize(20).setFontWeight('bold');
-  sh.getRange('B3').setValue('All amounts in USD, converted at NBP rates of the previous business day. Income = category "' + INCOME + '".')
+  sh.getRange('B3').setValue('All amounts in USD, converted at NBP rates of the previous business day. Income = the income categories on the Categories tab.')
     .setFontColor(THEME.muted).setFontSize(10);
 
   // Selectors (the only editable cells)
@@ -1128,11 +1259,11 @@ function buildDetails(ss) {
 
   kpiTiles(sh, 7, [
     ['B', 'Spent', '=INDEX($J$13:$J$24, MATCH($F$5, $B$13:$B$24, 0))', MONEY,
-      '=LET(prev, SUMIFS(' + J + ', ' + A + ', ">="&$N$7, ' + A + ', "<"&$N$5, ' + NOT_INCOME + '), ' +
+      '=LET(prev, ' + spentF(J, F, A + ', ">="&$N$7, ' + A + ', "<"&$N$5') + ', ' +
       'IF(prev=0, "no data for previous month", TEXT($B$8/prev-1, "+0%;-0%;0%")&" vs previous month"))'],
     ['D', 'Income', '=INDEX($K$13:$K$24, MATCH($F$5, $B$13:$B$24, 0))', MONEY, '="in "&$F$5'],
     ['F', 'Net', '=$D$8-$B$8', NET, '=IF($D$8=0, "no income recorded", TEXT($F$8/$D$8, "0%;-0%")&" of income")'],
-    ['H', 'Transactions', '=COUNTIFS(' + A + ', ">="&$N$5, ' + A + ', "<"&$N$6, ' + NOT_INCOME + ')', '0',
+    ['H', 'Transactions', '=' + spentCountF(F, A + ', ">="&$N$5, ' + A + ', "<"&$N$6'), '0',
       '=IF($H$8=0, "", TEXT($B$8/$H$8, "$#,##0")&" average")'],
     ['J', 'Spent this year', '=$J$25', MONEY, '="net "&TEXT($L$25, "$#,##0;-$#,##0")&" in "&$C$5'],
   ]);
@@ -1146,8 +1277,8 @@ function buildDetails(ss) {
     sh.getRange('B' + r).setValue(name);
     catCols.forEach(c => sh.getRange(c + r).setFormula('=SUMIFS(' + J + ', ' + F + ', ' + c + '$12, ' + range + ')'));
     sh.getRange('I' + r).setFormula('=ROUND(J' + r + '-SUM(C' + r + ':H' + r + '), 2)');
-    sh.getRange('J' + r).setFormula('=SUMIFS(' + J + ', ' + range + ', ' + NOT_INCOME + ')');
-    sh.getRange('K' + r).setFormula('=SUMIFS(' + J + ', ' + range + ', ' + F + ', "' + INCOME + '")');
+    sh.getRange('J' + r).setFormula('=' + spentF(J, F, range));
+    sh.getRange('K' + r).setFormula('=' + incomeF(J, F, range));
     sh.getRange('L' + r).setFormula('=K' + r + '-J' + r);
   });
   totalRow(sh, 25, 13, 24, tableCols);
@@ -1202,7 +1333,7 @@ function buildDetails(ss) {
   section(sh, 'B56', '="Top merchants · "&$F$5');
   sh.getRange('B57').setFormula(
     '=IFERROR(QUERY(FILTER({' + col2('D') + ', ' + col2('J') + '}, ' + inMonth + ', ' + col2('D') + '<>"", ' +
-    col2('F') + '<>"' + INCOME + '"), ' +
+    'ISNA(MATCH(' + col2('F') + ', ' + INCOME_LIST + ', 0))), ' +
     '"select Col1, sum(Col2), count(Col2) group by Col1 order by sum(Col2) desc limit 10 ' +
     'label Col1 \'Merchant\', sum(Col2) \'Amount\', count(Col2) \'Count\'", 0), "No spending this month")');
   styleHeaderRow(sh.getRange('B57:D57'));
@@ -1220,7 +1351,7 @@ function buildDetails(ss) {
   // By account (card) for the selected month
   section(sh, 'B70', '="By account · "&$F$5');
   sh.getRange('B71').setFormula(
-    '=IFERROR(QUERY(FILTER({' + col2('E') + ', ' + col2('J') + '}, ' + inMonth + ', ' + col2('F') + '<>"' + INCOME + '"), ' +
+    '=IFERROR(QUERY(FILTER({' + col2('E') + ', ' + col2('J') + '}, ' + inMonth + ', ' + 'ISNA(MATCH(' + col2('F') + ', ' + INCOME_LIST + ', 0))), ' +
     '"select Col1, sum(Col2), count(Col2) group by Col1 order by sum(Col2) desc limit 8 ' +
     'label Col1 \'Account\', sum(Col2) \'Amount\', count(Col2) \'Count\'", 0), "No spending this month")');
   styleHeaderRow(sh.getRange('B71:D71'));
@@ -1235,8 +1366,8 @@ function buildDetails(ss) {
     const ifYear = f => '=IF($B' + r + '="", "", ' + f + ')';
     catCols.forEach(c => sh.getRange(c + r).setFormula(ifYear('SUMIFS(' + J + ', ' + F + ', ' + c + '$83, ' + range + ')')));
     sh.getRange('I' + r).setFormula(ifYear('ROUND(J' + r + '-SUM(C' + r + ':H' + r + '), 2)'));
-    sh.getRange('J' + r).setFormula(ifYear('SUMIFS(' + J + ', ' + range + ', ' + NOT_INCOME + ')'));
-    sh.getRange('K' + r).setFormula(ifYear('SUMIFS(' + J + ', ' + range + ', ' + F + ', "' + INCOME + '")'));
+    sh.getRange('J' + r).setFormula(ifYear(spentF(J, F, range)));
+    sh.getRange('K' + r).setFormula(ifYear(incomeF(J, F, range)));
     sh.getRange('L' + r).setFormula(ifYear('K' + r + '-J' + r));
   }
   sh.getRange('B84:B93').setNumberFormat('0').setHorizontalAlignment('left');

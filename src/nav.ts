@@ -8,7 +8,8 @@ export type Screen =
   | { name: 'transactions'; ym?: string; filter?: string }
   | { name: 'stats'; ym?: string }
   | { name: 'subs' }
-  | { name: 'rules' };
+  | { name: 'rules' }
+  | { name: 'categories' };
 
 export type SheetSpec =
   | { kind: 'tx'; edit?: Tx; account?: string; type?: 'expense' | 'income' }
@@ -26,7 +27,8 @@ export type SheetSpec =
   | { kind: 'security' }
   | { kind: 'lockSetup'; step?: 'method' | 'enter'; change?: boolean }
   | { kind: 'logo'; account: string }
-  | { kind: 'newAccount'; type?: AccountType };
+  | { kind: 'newAccount'; type?: AccountType }
+  | { kind: 'category'; edit?: string; catKind?: 'expense' | 'income' };
 
 export interface ToastIcon {
   icon: string;

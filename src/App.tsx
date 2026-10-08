@@ -8,6 +8,7 @@ import { launchNotice, useUpdate } from './lib/update';
 import { type Nav, NavContext, type Screen, type SheetSpec, type ToastIcon } from './nav';
 import { AccountScreen } from './screens/Account';
 import { Accounts } from './screens/Accounts';
+import { Categories } from './screens/Categories';
 import { Home } from './screens/Home';
 import { Onboarding } from './screens/Onboarding';
 import { Rules } from './screens/Rules';
@@ -417,6 +418,8 @@ export function App() {
         return view && <Subscriptions view={view} />;
       case 'rules':
         return view && <Rules view={view} />;
+      case 'categories':
+        return view && <Categories view={view} />;
     }
   };
 

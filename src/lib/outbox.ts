@@ -1,4 +1,5 @@
 import { parseAmount } from './format';
+import { isIncomeCat, setCategoryLooks } from './meta';
 import { norm, placeMatches, ruleFor } from './rules';
 import type {
   Account,
@@ -160,7 +161,7 @@ function checkedAt(a: Account): string {
 
 // What a record does to its account's balance, in the account's currency
 function txDelta(t: Tx, a: Account, view: View): number | null {
-  const sign = t.category === view.income ? 1 : -1;
+  const sign = isIncomeCat(t.category) ? 1 : -1;
   if (Number.isNaN(t.amount)) return null;
   if (t.currency ? sameCurrency(t.currency, a.currency) : t.usd == null) return sign * t.amount;
   const perUnit = STABLE.has(a.currency) ? 1 : (view.rates[a.currency] ?? null);
@@ -207,11 +208,15 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
     budgets: server.budgets ?? { total: 0, cats: {} },
     subscriptions: (server.subscriptions ?? []).map((x) => ({ ...x })),
     rules: (server.rules ?? []).map(([kw, cat]) => ({ kw, cat })),
-    categories: server.categories,
+    categories: [...server.categories],
+    incomeCategories: server.incomeCategories ? [...server.incomeCategories] : [server.income],
+    categoryLooks: (server.categoryLooks ?? []).map((r) => [...r] as View['categoryLooks'][number]),
     colors: server.colors,
     income: server.income,
     today: localToday(),
   };
+
+  setCategoryLooks(view.categoryLooks, view.income);
 
   // the sheet keeps each balance as last entered; records since then move it
   for (const t of view.tx) trackTx(view, t, 1);
@@ -301,7 +306,7 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
         view.rules = [{ kw: op.kw, cat: op.cat }, ...view.rules.filter((r) => !drop.includes(norm(r.kw)))];
         if (op.past) {
           view.tx = view.tx.map((t) =>
-            t.category !== view.income && t.merchant && placeMatches(op.kw, t.merchant)
+            !isIncomeCat(t.category) && t.merchant && placeMatches(op.kw, t.merchant)
               ? { ...t, category: op.cat }
               : t,
           );
@@ -336,6 +341,35 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
         if (!failed)
           view.accounts = view.accounts.filter((x) => x.name.toLowerCase() !== op.account.toLowerCase());
         break;
+      case 'category': {
+        if (failed) break;
+        const c = op.cat;
+        const list = c.kind === 'income' ? view.incomeCategories : view.categories;
+        if (!list.includes(c.name)) list.push(c.name);
+        view.categoryLooks = [
+          ...view.categoryLooks.filter((r) => r[0] !== c.name),
+          [c.name, c.kind, c.emoji, c.color],
+        ];
+        setCategoryLooks(view.categoryLooks, view.income);
+        break;
+      }
+      case 'deleteCategory': {
+        if (failed) break;
+        const income = view.incomeCategories.includes(op.name);
+        const to = income ? view.income : 'Other';
+        view.categories = view.categories.filter((c) => c !== op.name);
+        view.incomeCategories = view.incomeCategories.filter((c) => c !== op.name);
+        view.categoryLooks = view.categoryLooks.filter((r) => r[0] !== op.name);
+        view.tx = view.tx.map((t) => (t.category === op.name ? { ...t, category: to } : t));
+        view.rules = view.rules.filter((r) => r.cat !== op.name);
+        if (view.budgets.cats[op.name]) {
+          const cats = { ...view.budgets.cats };
+          delete cats[op.name];
+          view.budgets = { ...view.budgets, cats };
+        }
+        setCategoryLooks(view.categoryLooks, view.income);
+        break;
+      }
       case 'accountDomain': {
         const a = view.accounts.find((x) => x.name === op.account);
         if (a && !failed) a.domain = op.domain;

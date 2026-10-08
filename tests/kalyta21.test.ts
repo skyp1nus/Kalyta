@@ -3,6 +3,7 @@ import { fmt } from '../src/lib/format';
 import { accountDomain, logoUrls } from '../src/lib/meta';
 import { buildView } from '../src/lib/outbox';
 import { kwOf, norm, ruleFor } from '../src/lib/rules';
+import { monthSummary } from '../src/lib/stats';
 import {
   addCadence,
   budgetState,
@@ -327,5 +328,39 @@ describe('balances follow records', () => {
     const v = buildView(base, [add, del]);
     expect(v?.accounts.find((a) => a.name === 'Revolut')?.balance).toBe(70);
     expect(v?.accounts.find((a) => a.name === 'Wise')?.balance).toBe(494.62);
+  });
+});
+
+describe('categories from the sheet', () => {
+  const withCats: ServerData = {
+    ...server,
+    tx: [
+      ...server.tx,
+      ['sal', '2026-10-02T10:00', 2000, 'USD', 'Client', 'Revolut', 'Salary', '', 'app', 2000],
+    ],
+    incomeCategories: ['Salary', 'Income'],
+    categoryLooks: [
+      ['Salary', 'income', '💰', '#30d158'],
+      ['Food', 'expense', '', '#ff9f0a'],
+    ],
+  };
+
+  it('counts an income category as income', () => {
+    const v = buildView(withCats, []);
+    if (!v) throw new Error('no view');
+    expect(monthSummary(v, '2026-10').income).toBe(2000);
+  });
+
+  it('adds and deletes categories right away', () => {
+    const v = buildView(withCats, [
+      op({ action: 'category', cat: { name: 'Pets', kind: 'expense', emoji: '🐶', color: '#ff9f0a' } }),
+      op({ action: 'deleteCategory', name: 'Salary' }),
+    ]);
+    if (!v) throw new Error('no view');
+    expect(v.categories).toContain('Pets');
+    expect(v.incomeCategories).not.toContain('Salary');
+    // its record falls back to the catch-all income category and still counts as income
+    expect(v.tx.find((t) => t.id === 'sal')?.category).toBe('Income');
+    expect(monthSummary(v, '2026-10').income).toBe(2000);
   });
 });

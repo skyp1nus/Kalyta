@@ -1,4 +1,5 @@
 import { daysBetween, SHORT_MONTHS } from './format';
+import { isIncomeCat } from './meta';
 import { kwOf, norm } from './rules';
 import type { Cadence, Subscription, Tx, View } from './types';
 
@@ -86,7 +87,7 @@ export function chargesOf(
   return view.tx
     .filter(
       (t) =>
-        t.category !== view.income &&
+        !isIncomeCat(t.category) &&
         t.merchant &&
         sameThing(sub.name, t.merchant) &&
         closeAmount(view, t, sub),
@@ -155,7 +156,7 @@ export interface Suggestion {
 export function findRecurring(view: View, ignored: string[]): Suggestion[] {
   const groups = new Map<string, Tx[]>();
   for (const t of view.tx) {
-    if (t.category === view.income || !t.merchant || daysBetween(t.date.slice(0, 10), view.today) > 400)
+    if (isIncomeCat(t.category) || !t.merchant || daysBetween(t.date.slice(0, 10), view.today) > 400)
       continue;
     const k = norm(kwOf(t.merchant)).trim();
     if (k.length < 3) continue;

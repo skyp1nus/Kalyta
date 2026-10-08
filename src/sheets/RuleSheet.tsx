@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../components/ui';
 import { dayHeading } from '../lib/format';
-import { categoryMeta } from '../lib/meta';
+import { categoryMeta, isIncomeCat } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { norm, ruleMatches } from '../lib/rules';
 import { enqueue } from '../lib/store';
@@ -32,7 +32,7 @@ export function RuleSheet({
 
   const k = kw.trim();
   const matches = useMemo(() => ruleMatches(view, k).sort((a, b) => (a.date < b.date ? 1 : -1)), [view, k]);
-  const move = matches.filter((t) => t.category !== view.income && t.category !== cat).length;
+  const move = matches.filter((t) => !isIncomeCat(t.category) && t.category !== cat).length;
   const valid = k.length >= 2;
 
   function save() {
@@ -100,7 +100,7 @@ export function RuleSheet({
         )}
         {matches.slice(0, 6).map((t, i) => {
           const meta = categoryMeta(t.category, view.income);
-          const income = t.category === view.income;
+          const income = isIncomeCat(t.category);
           const change = !income && t.category !== cat;
           return (
             <div key={t.id}>

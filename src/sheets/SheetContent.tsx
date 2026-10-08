@@ -3,6 +3,7 @@ import type { SheetSpec } from '../nav';
 import { AccountSheet } from './AccountSheet';
 import { BalanceSheet } from './BalanceSheet';
 import { BudgetsSheet } from './BudgetsSheet';
+import { CategorySheet } from './CategorySheet';
 import { ConvertSheet } from './ConvertSheet';
 import { LogoSheet } from './LogoSheet';
 import { ReviewSheet } from './ReviewSheet';
@@ -58,6 +59,8 @@ export function SheetContent({
       return <LockSetupSheet step={spec.step} change={spec.change} />;
     case 'logo':
       return <LogoSheet view={view} account={spec.account} />;
+    case 'category':
+      return <CategorySheet view={view} edit={spec.edit} kind={spec.catKind} setTint={setTint} />;
     case 'newAccount':
       return <AccountSheet view={view} type={spec.type} />;
   }

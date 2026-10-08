@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { usePinnedGlow } from '../components/hooks';
 import { BackButton, CircleButton, EmptyState, Icon } from '../components/ui';
-import { categoryMeta } from '../lib/meta';
+import { categoryMeta, isIncomeCat } from '../lib/meta';
 import { ruleMatches } from '../lib/rules';
 import type { View } from '../lib/types';
 import { useNav } from '../nav';
@@ -23,7 +23,7 @@ export const Rules = memo(function Rules({ view }: { view: View }) {
             <div className="group" style={{ marginTop: 22 }}>
               {view.rules.map((r, i) => {
                 const meta = categoryMeta(r.cat, view.income);
-                const n = ruleMatches(view, r.kw).filter((t) => t.category !== view.income).length;
+                const n = ruleMatches(view, r.kw).filter((t) => !isIncomeCat(t.category)).length;
                 return (
                   <div key={r.kw}>
                     {i > 0 && <div className="sep" />}
