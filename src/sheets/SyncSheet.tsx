@@ -163,7 +163,7 @@ export function SyncSheet({ view }: { view: View }) {
     <>
       <SheetHead
         left={<CloseButton onClick={nav.close} />}
-        title="Sync"
+        title=""
         right={
           <button
             type="button"
