@@ -362,7 +362,8 @@ function ensureTab(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(name);
   if (!sh) {
-    sh = ss.insertSheet(name);
+    // new data tabs go at the end, after the dashboards and the main tabs
+    sh = ss.insertSheet(name, ss.getNumSheets());
     sh.setFrozenRows(1);
   }
   const head = sh.getRange(1, 1, 1, headers.length).getValues()[0];
