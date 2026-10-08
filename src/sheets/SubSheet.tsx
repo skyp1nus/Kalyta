@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Icon, Segmented } from '../components/ui';
 import { parseAmount } from '../lib/format';
-import { categoryMeta, isDebt } from '../lib/meta';
+import { CURRENCIES, categoryMeta, isDebt } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { newId } from '../lib/outbox';
 import { discardOp, enqueue, useStore } from '../lib/store';
@@ -285,6 +285,14 @@ export function SubSheet({
             </button>
           ))}
       </div>
+
+      <Segmented
+        label="Currency"
+        tight
+        value={currency}
+        onChange={setCurrency}
+        options={[...new Set([...CURRENCIES, currency])].map((c) => ({ value: c, label: c }))}
+      />
 
       <Segmented
         label="Repeats"
