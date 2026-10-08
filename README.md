@@ -31,7 +31,8 @@ Apple Pay (Shortcuts) ── HTTPS POST ──┘                        ├─ 
 ## Set up
 
 1. **Script.** Open your sheet → Extensions → Apps Script and paste [`apps-script/Code.gs`](apps-script/Code.gs).
-   Set `SECRET` (for the Apple Pay shortcut) and `VIEW_KEY` (for the app) to long random strings.
+   In Project Settings → Script properties add `SECRET` (for the Apple Pay shortcut) and `VIEW_KEY`
+   (for the app), each a long random string.
 2. Run `setupDashboard` once and allow the permissions.
 3. **Deploy → New deployment → Web app**, execute as *Me*, access *Anyone*. Copy the URL ending in `/exec`.
    After every code change: Manage deployments → Edit → New version.
@@ -50,6 +51,23 @@ redeploy, everything else keeps working and those actions show up as failed in S
 Paste the new `Code.gs` again and deploy a new version. It adds three tabs, created on first use: *Budgets* (monthly
 limits in USD), *Subscriptions* and *Rules* (the existing keyword → category list, now editable from the app), plus a
 *Domain* column on *Accounts* for logos. Apple Pay records with an empty category show up in *Needs a category*.
+
+## Automatic script deploys
+
+Keys live in the script's **Project Settings → Script properties** (`SECRET`, `VIEW_KEY`), never in
+`Code.gs`, so the file can be replaced at any time. Every push that changes `apps-script/` is pushed
+to the script and the existing web app deployment gets a new version (same URL) by
+`.github/workflows/apps-script.yml`. One-time setup:
+
+1. Turn on the Apps Script API: https://script.google.com/home/usersettings
+2. On a computer: `npx @google/clasp@2.4.2 login`, then copy the contents of `~/.clasprc.json`.
+3. In GitHub → Settings → Secrets and variables → Actions add:
+   - `CLASPRC_JSON`: the contents of `~/.clasprc.json`
+   - `SCRIPT_ID`: Apps Script → Project Settings → Script ID
+   - `DEPLOYMENT_ID`: Deploy → Manage deployments → Deployment ID (starts with `AKfycb`)
+
+The workflow replaces every file in the script project with `apps-script/`, including the
+`appsscript.json` manifest.
 
 ## Develop
 

@@ -2,8 +2,13 @@
 // Deploy: Deploy -> New deployment -> Web app (Execute as: Me | Who has access: Anyone)
 // After any code change: Deploy -> Manage deployments -> Edit -> Version: New version -> Deploy
 
-const SECRET = 'REPLACE_WITH_A_LONG_RANDOM_STRING';      // shortcuts send this with every POST
-const VIEW_KEY = 'REPLACE_WITH_ANOTHER_RANDOM_STRING';   // app + web dashboard key: <web app URL>?key=VIEW_KEY
+// Keys are not in this file. Set them once in Project Settings → Script properties:
+//   SECRET   — the Apple Pay shortcuts send it with every POST
+//   VIEW_KEY — the app and the web dashboard (<web app URL>?key=VIEW_KEY)
+// so this file can be replaced or deployed automatically without touching them.
+function scriptKey(name) {
+  return clean(PropertiesService.getScriptProperties().getProperty(name));
+}
 const SHEET_NAME = 'Expenses';
 const RULES_SHEET = 'Rules';           // A = Keyword, B = Category (place contains keyword -> category)
 const BUDGETS_SHEET = 'Budgets';       // A = Category ("Total" for all spending), B = monthly limit in USD
@@ -42,7 +47,7 @@ function doPost(e) {
   try {
     const data = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (data.action) return json(handleApi(data));   // Kalyta app
-    if (data.secret !== SECRET) return json({ ok: false, error: 'unauthorized' });
+    if (!scriptKey('SECRET') || data.secret !== scriptKey('SECRET')) return json({ ok: false, error: 'unauthorized' });
 
     const lock = LockService.getScriptLock();
     lock.waitLock(10000);
@@ -84,7 +89,8 @@ function addTransaction(t) {
 // <web app URL>?key=VIEW_KEY opens the dashboard; without the key it only says the deployment is alive
 function doGet(e) {
   const key = e && e.parameter ? e.parameter.key : '';
-  const keySet = VIEW_KEY && VIEW_KEY.indexOf('REPLACE_') !== 0;
+  const viewKey = scriptKey('VIEW_KEY');
+  const keySet = !!viewKey;
   if (e && e.parameter && e.parameter.action) {
     try {
       return json(handleApi({ key: key, action: e.parameter.action }));
@@ -92,12 +98,12 @@ function doGet(e) {
       return json({ ok: false, error: String(err.message || err) });
     }
   }
-  if (keySet && key === VIEW_KEY) {
+  if (keySet && key === viewKey) {
     return HtmlService.createHtmlOutput(renderPage(getDashboardData()))
       .setTitle('Finances')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   }
-  return json({ ok: true, status: 'alive', dashboard: keySet ? 'add ?key=...' : 'set VIEW_KEY in the script first' });
+  return json({ ok: true, status: 'alive', dashboard: keySet ? 'add ?key=...' : 'set VIEW_KEY in Project Settings → Script properties' });
 }
 
 // ---------- JSON API for the Kalyta app ----------
@@ -123,7 +129,8 @@ const TRANSFERS_SHEET = 'Transfers';
 const TRANSFER_HEADERS = ['Date', 'From', 'Sent', 'Currency', 'To', 'Received', 'Currency', 'Sent USD', 'Received USD', 'Rate', 'Note', 'ID'];
 
 function keyOk(key) {
-  return VIEW_KEY && VIEW_KEY.indexOf('REPLACE_') !== 0 && key === VIEW_KEY;
+  const viewKey = scriptKey('VIEW_KEY');
+  return !!viewKey && key === viewKey;
 }
 
 function handleApi(body) {
@@ -1545,7 +1552,7 @@ function json(obj) {
 function testDoPost() {
   const res = doPost({
     postData: {
-      contents: JSON.stringify({ secret: SECRET, amount: '12,50 zł', merchant: 'Żabka', card: 'Wise' }),
+      contents: JSON.stringify({ secret: scriptKey('SECRET'), amount: '12,50 zł', merchant: 'Żabka', card: 'Wise' }),
     },
   });
   Logger.log(res.getContent());

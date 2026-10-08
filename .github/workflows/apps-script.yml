@@ -1,0 +1,47 @@
+name: Deploy Apps Script
+
+# Pushes apps-script/ to the script bound to the sheet and updates the existing web app
+# deployment, so its URL stays the same. Keys stay in the script's Script properties.
+# Needs three repository secrets: CLASPRC_JSON, SCRIPT_ID, DEPLOYMENT_ID (see README).
+on:
+  push:
+    branches: [master]
+    paths: ['apps-script/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Log in and point clasp at the script
+        id: login
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ]; then
+            echo "::warning::Skipped: add the CLASPRC_JSON, SCRIPT_ID and DEPLOYMENT_ID secrets (README → Automatic script deploys)"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"apps-script"}' "$SCRIPT_ID" > .clasp.json
+      - name: Push the code
+        if: steps.login.outputs.ready == 'true'
+        run: npx -y @google/clasp@2.4.2 push --force
+      - name: Update the web app deployment
+        if: steps.login.outputs.ready == 'true'
+        env:
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: npx -y @google/clasp@2.4.2 deploy --deploymentId "$DEPLOYMENT_ID" --description "Kalyta ${GITHUB_SHA::7}"
