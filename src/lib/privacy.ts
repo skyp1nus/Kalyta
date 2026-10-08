@@ -196,14 +196,36 @@ export function startPrivacyWatch() {
   let hiddenAt = 0;
   let coverTimer: ReturnType<typeof setTimeout> | undefined;
   const root = document.documentElement;
+
+  // iOS takes the app switcher snapshot as soon as the swipe starts, which is when the window
+  // loses focus (the page is only hidden later). Cover then, synchronously, so the snapshot has it.
+  const cover = () => {
+    clearTimeout(coverTimer);
+    if (!getPrefs().blurSw) return;
+    root.classList.add('covered');
+    if (!state.cover) set({ cover: true, peek: false });
+  };
+  const uncover = () => {
+    clearTimeout(coverTimer);
+    // let the cover fade out once we're back
+    coverTimer = setTimeout(() => {
+      root.classList.remove('covered');
+      if (state.cover) set({ cover: false });
+    }, 60);
+  };
+
+  window.addEventListener('blur', cover);
+  window.addEventListener('pagehide', cover);
+  window.addEventListener('focus', () => {
+    if (document.visibilityState === 'visible') uncover();
+  });
+
   document.addEventListener('visibilitychange', () => {
     const p = getPrefs();
     if (document.visibilityState === 'hidden') {
       hiddenAt = Date.now();
-      clearTimeout(coverTimer);
-      // iOS takes the app switcher snapshot right away: change the DOM synchronously
-      if (p.blurSw) root.classList.add('covered');
-      const patch: Partial<PrivacyState> = { peek: false, cover: p.blurSw };
+      cover();
+      const patch: Partial<PrivacyState> = { peek: false };
       if (state.reason) {
         afterUnlock = null;
         patch.reason = '';
@@ -215,10 +237,6 @@ export function startPrivacyWatch() {
     }
     const away = Date.now() - hiddenAt;
     if (p.lockOn && hiddenAt && away >= (AUTO_MS[p.autoLock] ?? 60e3)) set({ locked: true });
-    // let the cover fade out once we're back
-    coverTimer = setTimeout(() => {
-      root.classList.remove('covered');
-      set({ cover: false });
-    }, 60);
+    if (document.hasFocus()) uncover();
   });
 }

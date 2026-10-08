@@ -2883,7 +2883,8 @@ button.row:active,
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: color-mix(in srgb, var(--bg) 35%, transparent);
+  /* mostly solid: the blur alone isn't always in the app switcher snapshot */
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
   -webkit-backdrop-filter: blur(34px) saturate(1.4);
   backdrop-filter: blur(34px) saturate(1.4);
   opacity: 0;
