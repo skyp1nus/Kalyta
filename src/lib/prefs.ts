@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 // Per-device display settings. They never go to the sheet.
 export type Theme = 'auto' | 'dark' | 'light';
-export type Block = 'cards' | 'budgets' | 'upcoming' | 'accounts' | 'debts' | 'recent' | 'places';
+export type Block = 'cards' | 'budgets' | 'upcoming' | 'accounts' | 'recent' | 'places';
 export type AutoLock = 'Immediately' | '1 min' | '5 min' | '15 min';
 
 export interface Prefs {
@@ -26,7 +26,8 @@ export interface Prefs {
 }
 
 export const BASES = ['USD', 'PLN', 'EUR', 'UAH'];
-export const BLOCKS: Block[] = ['cards', 'budgets', 'upcoming', 'accounts', 'debts', 'recent', 'places'];
+// debts live on the Accounts screen only; Home shows your own accounts
+export const BLOCKS: Block[] = ['cards', 'budgets', 'upcoming', 'accounts', 'recent', 'places'];
 const KEY = 'kalyta.prefs';
 const DEFAULTS: Prefs = {
   theme: 'auto',
@@ -63,6 +64,7 @@ function load(): Prefs {
       order.splice(before ? order.indexOf(before) + 1 : 0, 0, b);
     }
     p.order = order;
+    p.hidden = p.hidden.filter((b) => BLOCKS.includes(b));
     return p;
   } catch {
     return DEFAULTS;

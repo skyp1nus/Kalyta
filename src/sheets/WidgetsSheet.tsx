@@ -9,7 +9,6 @@ const META: Record<Block, [string, string]> = {
   budgets: ['Budgets', 'savings'],
   upcoming: ['Upcoming', 'event_repeat'],
   accounts: ['Accounts', 'account_balance_wallet'],
-  debts: ['Debts', 'handshake'],
   recent: ['Recent transactions', 'receipt_long'],
   places: ['Top places', 'location_on'],
 };

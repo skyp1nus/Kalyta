@@ -4,11 +4,11 @@ import { UpdatePill } from '../components/Overlays';
 import { EntryRow } from '../components/rows';
 import { Avatar, CircleButton, Icon, SectionHead, Skeleton } from '../components/ui';
 import { allEntries } from '../lib/entries';
-import { MONTHS, SHORT_MONTHS, shortDate } from '../lib/format';
-import { isDebt, isPerson } from '../lib/meta';
+import { MONTHS, SHORT_MONTHS } from '../lib/format';
+import { isPerson } from '../lib/meta';
 import { type Money, useMoney } from '../lib/money';
 import { type Block, usePrefs } from '../lib/prefs';
-import { comparison, debtTotals, monthSummary, netWorth, shiftYm, weekSpending } from '../lib/stats';
+import { comparison, monthSummary, netWorth, shiftYm, weekSpending } from '../lib/stats';
 import { useStore } from '../lib/store';
 import { plural, type SyncInfo, syncInfo } from '../lib/syncState';
 import type { Account, View } from '../lib/types';
@@ -83,7 +83,6 @@ function HeroPager({ view, money }: { view: View; money: Money }) {
   const m = monthSummary(view, ym);
   const cmp = comparison(view, m);
   const nw = netWorth(view);
-  const { lent, owe } = debtTotals(view);
   const own = view.accounts.filter((a) => !isPerson(a.type)).length;
   const dq = cmp.base && m.spent ? Math.round((m.spent / cmp.base - 1) * 100) : null;
   const month = MONTHS[Number(ym.slice(5, 7)) - 1];
@@ -91,13 +90,7 @@ function HeroPager({ view, money }: { view: View; money: Money }) {
     {
       value: money.B(nw, nw < 0 ? '−' : ''),
       label: 'Net worth',
-      // debts are left out of net worth and only shown beside it
-      sub:
-        lent > 0 || owe > 0
-          ? [lent > 0 && `Owed to you ${money.B(lent)}`, owe > 0 && `You owe ${money.B(owe)}`]
-              .filter(Boolean)
-              .join(' · ')
-          : plural(own, 'account'),
+      sub: plural(own, 'account'),
       go: () => nav.push({ name: 'accounts' }),
     },
     {
@@ -202,17 +195,7 @@ function Cards({ view, money }: { view: View; money: Money }) {
   );
 }
 
-function AccountRows({
-  accounts,
-  money,
-  today,
-  debts,
-}: {
-  accounts: Account[];
-  money: Money;
-  today: string;
-  debts?: boolean;
-}) {
+function AccountRows({ accounts, money }: { accounts: Account[]; money: Money }) {
   const nav = useNav();
   return (
     <div className="group">
@@ -228,11 +211,9 @@ function AccountRows({
             <span className="main">
               <span className="title">{a.name}</span>
               <span className="sub" style={{ display: 'block' }}>
-                {debts
-                  ? `You owe · since ${shortDate(a.checked || a.updated, today)}`
-                  : a.currency === money.base || a.usd == null
-                    ? a.currency
-                    : `${a.currency} · ≈ ${money.B(Math.abs(a.usd))}`}
+                {a.currency === money.base || a.usd == null
+                  ? a.currency
+                  : `${a.currency} · ≈ ${money.B(Math.abs(a.usd))}`}
               </span>
             </span>
             <span className="amt">{money.n(a.balance, a.currency)}</span>
@@ -251,8 +232,8 @@ const HomeBody = memo(function HomeBody({ view, order }: { view: View; order: Bl
   const entries = useMemo(() => allEntries(view), [view]);
   const ym = view.today.slice(0, 7);
   const places = monthSummary(view, ym).places.slice(0, 3);
-  const own = view.accounts.filter((a) => !isDebt(a));
-  const debts = view.accounts.filter(isDebt);
+  // only your own accounts: debts are on the Accounts screen
+  const own = view.accounts.filter((a) => !isPerson(a.type));
 
   const blocks: Record<Block, React.ReactNode> = {
     cards: <Cards view={view} money={money} />,
@@ -268,13 +249,7 @@ const HomeBody = memo(function HomeBody({ view, order }: { view: View; order: Bl
             </button>
           }
         />
-        <AccountRows accounts={own} money={money} today={view.today} />
-      </>
-    ),
-    debts: debts.length > 0 && (
-      <>
-        <SectionHead title="Debts" />
-        <AccountRows accounts={debts} money={money} today={view.today} debts />
+        <AccountRows accounts={own} money={money} />
       </>
     ),
     recent: (
