@@ -173,7 +173,8 @@ function txDelta(t: Tx, a: Account, view: View): number | null {
 // last balance check
 function trackTx(view: View, t: Tx, dir: 1 | -1) {
   const a = accountOf(view.accounts, t.account);
-  if (!a || t.date <= checkedAt(a)) return;
+  // records are kept to the minute: one made in the same minute as the check came after it
+  if (!a || t.date < checkedAt(a)) return;
   const d = txDelta(t, a, view);
   if (d == null || !d) return;
   const i = view.accounts.indexOf(a);

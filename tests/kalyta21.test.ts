@@ -364,3 +364,29 @@ describe('categories from the sheet', () => {
     expect(monthSummary(v, '2026-10').income).toBe(2000);
   });
 });
+
+describe('a record in the same minute as the balance check', () => {
+  it('counts, because it was added after the check', () => {
+    const v = buildView(
+      {
+        ...server,
+        tx: [
+          ['inc', '2026-10-08T15:25', 6000, 'UAH', 'Family Care', 'PrivatBank', 'Income', '', 'app', 133.62],
+        ],
+        accounts: [
+          {
+            name: 'PrivatBank',
+            type: 'Account',
+            currency: 'UAH',
+            balance: 482.1,
+            updated: '2026-10-08',
+            checked: '2026-10-08T15:25',
+            usd: 10.74,
+          },
+        ],
+      },
+      [],
+    );
+    expect(v?.accounts[0].balance).toBe(6482.1);
+  });
+});

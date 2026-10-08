@@ -721,7 +721,8 @@ function balanceNow(row) {
   let perUnit = null; // USD per unit of the account currency
   let sum = 0;
   exp.getRange(2, 1, n, COL.base).getValues().forEach(t => {
-    if (!(t[COL.date - 1] instanceof Date) || t[COL.date - 1] <= checked) return;
+    // to the minute, like the app: a record from the minute of the check came after it
+    if (!(t[COL.date - 1] instanceof Date) || Math.floor(t[COL.date - 1] / 60000) < Math.floor(checked / 60000)) return;
     if (resolveAccountName(t[COL.card - 1], names).toLowerCase() !== name) return;
     const sign = isIncomeCategory(t[COL.category - 1]) ? 1 : -1;
     const tc = clean(t[COL.currency - 1]).toUpperCase() || LOCAL_CURRENCY;
