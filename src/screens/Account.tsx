@@ -17,7 +17,10 @@ export const AccountScreen = memo(function AccountScreen({ view, name }: { view:
   const money = useMoney(view);
   const openEntry = useOpenEntry();
   const a = view.accounts.find((x) => x.name.toLowerCase() === name.toLowerCase());
-  const mine = useMemo(() => allEntries(view).filter((e) => touchesAccount(e, name)), [view, name]);
+  const mine = useMemo(
+    () => allEntries(view).filter((e) => touchesAccount(e, name, view.accounts)),
+    [view, name],
+  );
   const [armed, setArmed] = useState(false);
 
   if (!a) {

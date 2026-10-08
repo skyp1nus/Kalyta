@@ -270,3 +270,62 @@ describe('accounts from the app', () => {
     expect(logoUrls('')).toEqual([]);
   });
 });
+
+describe('balances follow records', () => {
+  const base: ServerData = {
+    ...server,
+    tx: [
+      tx('before', '2026-10-05T10:00', 40, 'Biedronka', 'Food', 'PLN'),
+      ['ap1', '2026-10-08T13:00', 20.9, '', 'Green Caffè Nero', 'Wise Card', 'Food', '', 'apple_pay', 5.38],
+      ['inc', '2026-10-08T13:30', 100, 'USD', 'Client', 'Wise', 'Income', '', 'app', 100],
+    ],
+    accounts: [
+      {
+        name: 'Wise',
+        type: 'Account',
+        currency: 'USD',
+        balance: 500,
+        updated: '2026-10-08',
+        checked: '2026-10-08T12:00',
+        usd: 500,
+      },
+      {
+        name: 'Revolut',
+        type: 'Account',
+        currency: 'PLN',
+        balance: 100,
+        updated: '2026-10-08',
+        checked: '2026-10-08T12:00',
+        usd: 25,
+      },
+    ],
+  };
+
+  it('counts records made after the last balance check, Apple Pay cards included', () => {
+    const v = buildView(base, []);
+    // 500 − 5.38 (PLN coffee via USD) + 100 income; the Revolut record is from before the check
+    expect(v?.accounts.find((a) => a.name === 'Wise')?.balance).toBe(594.62);
+    expect(v?.accounts.find((a) => a.name === 'Revolut')?.balance).toBe(100);
+  });
+
+  it('moves the balance for queued adds, edits and deletes', () => {
+    const add = op({
+      action: 'add',
+      tx: {
+        id: 'n',
+        kind: 'expense',
+        date: '2026-10-08T14:00',
+        amount: '30',
+        currency: 'PLN',
+        merchant: 'Lidl',
+        account: 'Revolut',
+        category: 'Food',
+        note: '',
+      },
+    });
+    const del = op({ action: 'delete', id: 'inc' });
+    const v = buildView(base, [add, del]);
+    expect(v?.accounts.find((a) => a.name === 'Revolut')?.balance).toBe(70);
+    expect(v?.accounts.find((a) => a.name === 'Wise')?.balance).toBe(494.62);
+  });
+});

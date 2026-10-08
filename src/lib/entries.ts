@@ -1,8 +1,9 @@
 import { time } from './format';
 import { ADJUST_META, categoryMeta, TRANSFER_META } from './meta';
 import type { Money } from './money';
+import { accountOf } from './outbox';
 import { discardOp, enqueue, getState, putBackOps, takeOps } from './store';
-import type { Adjustment, Op, Transfer, Tx, TxInput, View } from './types';
+import type { Account, Adjustment, Op, Transfer, Tx, TxInput, View } from './types';
 
 // Everything that shows up in a list of records
 export type Entry =
@@ -23,10 +24,12 @@ export function entryKey(e: Entry): string {
   return `${e.kind}:${e.t.id}`;
 }
 
-export function touchesAccount(e: Entry, account: string): boolean {
+export function touchesAccount(e: Entry, account: string, accounts: Account[] = []): boolean {
   const a = account.toLowerCase();
   if (e.kind === 'transfer') return e.t.from.toLowerCase() === a || e.t.to.toLowerCase() === a;
-  return e.t.account.toLowerCase() === a;
+  if (e.t.account.toLowerCase() === a) return true;
+  // Apple Pay sends the card ("Wise Card"), which belongs to the account "Wise"
+  return e.kind === 'tx' && accountOf(accounts, e.t.account)?.name.toLowerCase() === a;
 }
 
 export interface RowLook {

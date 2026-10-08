@@ -56,9 +56,10 @@ function doPost(e) {
       addTransaction({
         date: new Date(),
         amount: parsed.amount,
-        currency: parsed.currency || clean(data.currency).toUpperCase(),
+        currency: parsed.currency || clean(data.currency).toUpperCase() || LOCAL_CURRENCY,
         merchant: merchant,
-        card: clean(data.card),
+        // "Wise Card" from Apple Pay is recorded under the account "Wise"
+        card: resolveAccountName(clean(data.card)),
         category: clean(data.category) || autoCategory(merchant),
         note: clean(data.note),
         source: clean(data.source) || 'apple_pay',
@@ -556,6 +557,56 @@ function sameCurrency(a, b) {
   return norm(a) === norm(b);
 }
 
+// The account a card belongs to: the same name, or the longest account name inside the card's
+// name ("Wise Card" → "Wise"). Unknown cards are kept as they are.
+function accountNames() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ACCOUNTS_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map(r => clean(r[0])).filter(String);
+}
+
+function resolveAccountName(card, names) {
+  const c = clean(card).toLowerCase();
+  if (!c) return clean(card);
+  names = names || accountNames();
+  const exact = names.find(n => n.toLowerCase() === c);
+  if (exact) return exact;
+  let best = '';
+  names.forEach(n => {
+    if (n.length >= 3 && c.indexOf(n.toLowerCase()) >= 0 && n.length > best.length) best = n;
+  });
+  return best || clean(card);
+}
+
+// The balance as Kalyta shows it: what was entered at the last check plus the records since then
+function balanceNow(row) {
+  const sh = getAccountsSheet();
+  const r = sh.getRange(row, 1, 1, 7).getValues()[0];
+  const name = clean(r[0]).toLowerCase();
+  const cur = clean(r[2]).toUpperCase();
+  const anchor = Number(r[3]) || 0;
+  const checked = r[6] instanceof Date ? r[6] : r[4] instanceof Date ? r[4] : null;
+  if (!checked) return anchor;
+  const exp = getSheet();
+  const n = exp.getLastRow() - 1;
+  if (n < 1) return anchor;
+  const stable = c => (c === 'USDT' || c === 'USDC' ? 'USD' : c);
+  const names = accountNames();
+  let perUnit = null; // USD per unit of the account currency
+  let sum = 0;
+  exp.getRange(2, 1, n, COL.base).getValues().forEach(t => {
+    if (!(t[COL.date - 1] instanceof Date) || t[COL.date - 1] <= checked) return;
+    if (resolveAccountName(t[COL.card - 1], names).toLowerCase() !== name) return;
+    const sign = clean(t[COL.category - 1]) === INCOME ? 1 : -1;
+    const tc = clean(t[COL.currency - 1]).toUpperCase() || LOCAL_CURRENCY;
+    if (stable(tc) === stable(cur)) { sum += sign * (Number(t[COL.amount - 1]) || 0); return; }
+    if (perUnit == null) perUnit = stable(cur) === 'USD' ? 1 : (currentRates()[cur] || 0);
+    const usd = Number(t[COL.base - 1]);
+    if (perUnit && !isNaN(usd)) sum += sign * usd / perUnit;
+  });
+  return Math.round((anchor + sum) * 100) / 100;
+}
+
 function accountRow(name) {
   const sh = getAccountsSheet();
   const n = sh.getLastRow() - 1;
@@ -643,7 +694,8 @@ function getApiData() {
       currency: clean(r[2]).toUpperCase(),
       balance: Number(r[3]) || 0,
       updated: day(r[4]),
-      checked: day(r[6]) || day(r[4]),
+      // with the time: records after it are not in the balance yet
+      checked: fmt(r[6]) || fmt(r[4]) || day(r[4]),
       domain: clean(r[7]),
       usd: typeof r[5] === 'number' ? Math.round(r[5] * 100) / 100 : null,
     }));
@@ -831,7 +883,7 @@ function updateBalance(name, rawBalance, currency, kind, id) {
     sh.getRange(row, 6).setFormula(accountUsdFormula(row));
   }
   const now = new Date();
-  const before = Number(sh.getRange(row, 4).getValue()) || 0;
+  const before = balanceNow(row);
   sh.getRange(row, 4, 1, 2).setValues([[parsed.amount, now]]);
   sh.getRange(row, 7).setValue(now);
   const change = Math.round((parsed.amount - before) * 100) / 100;

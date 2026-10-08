@@ -3,7 +3,7 @@ import { toCsv } from '../src/lib/csv';
 import { dayHeading, fmt } from '../src/lib/format';
 import { accountGroup } from '../src/lib/meta';
 import { makeMoney } from '../src/lib/money';
-import { buildView, localToday } from '../src/lib/outbox';
+import { buildView } from '../src/lib/outbox';
 import { comparison, monthSummary, weekSpending } from '../src/lib/stats';
 import type { Op, OpBody, ServerData, View } from '../src/lib/types';
 
@@ -21,7 +21,15 @@ const server: ServerData = {
     { name: 'Wise', type: 'Account', currency: 'USD', balance: 656, updated: '2026-10-07', usd: 656 },
     { name: 'monobank', type: 'Account', currency: 'UAH', balance: 1289, updated: '2026-10-05', usd: 31.13 },
     { name: 'Bybit', type: 'Account', currency: 'USDT', balance: 159, updated: '2026-10-05', usd: 159 },
-    { name: 'Cash', type: 'Account', currency: 'PLN', balance: 100, updated: '2026-10-01', usd: 25 },
+    {
+      name: 'Cash',
+      type: 'Account',
+      currency: 'PLN',
+      balance: 100,
+      updated: '2026-10-01',
+      checked: '2026-10-06T23:00',
+      usd: 25,
+    },
     { name: 'Рітулік', type: 'You owe', currency: 'USD', balance: 224, updated: '2026-09-12', usd: -224 },
   ],
   adjustments: [['adj1', '2026-10-04T09:00', 'Cash', -5, 'PLN']],
@@ -85,8 +93,8 @@ describe('balance adjustments', () => {
     expect(adj?.change).toBe(-10);
     expect(adj?.pending).toBe(true);
     expect(balance(v, 'Cash')).toBe(90);
-    // the check is stamped with the real date, not the fixture's "today"
-    expect(v.accounts.find((a) => a.name === 'Cash')?.checked).toBe(localToday());
+    // stamped with the moment of the check, so later records move the balance
+    expect(v.accounts.find((a) => a.name === 'Cash')?.checked).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
   });
 
   it('a plain check logs nothing', () => {

@@ -136,6 +136,61 @@ function moveBalance(
   accounts[i] = { ...a, balance, usd: perUnit == null ? a.usd : Math.round(balance * perUnit * 100) / 100 };
 }
 
+// The account a record belongs to: the same name, or else an account whose name is part of the
+// card's ("Wise Card" from Apple Pay → Wise); the longest name wins.
+export function accountOf(accounts: Account[], card: string): Account | undefined {
+  const c = (card ?? '').trim().toLowerCase();
+  if (!c) return undefined;
+  const exact = accounts.find((a) => a.name.trim().toLowerCase() === c);
+  if (exact) return exact;
+  let best: Account | undefined;
+  for (const a of accounts) {
+    const n = a.name.trim().toLowerCase();
+    if (n.length >= 3 && c.includes(n) && n.length > (best?.name.length ?? 0)) best = a;
+  }
+  return best;
+}
+
+// When the balance was last entered by hand. Records after that are not in it yet.
+// An older sheet only sends the day, so that whole day counts as already included.
+function checkedAt(a: Account): string {
+  const c = a.checked || a.updated || '';
+  return c.length === 10 ? `${c}T23:59` : c;
+}
+
+// What a record does to its account's balance, in the account's currency
+function txDelta(t: Tx, a: Account, view: View): number | null {
+  const sign = t.category === view.income ? 1 : -1;
+  if (Number.isNaN(t.amount)) return null;
+  if (t.currency ? sameCurrency(t.currency, a.currency) : t.usd == null) return sign * t.amount;
+  const perUnit = STABLE.has(a.currency) ? 1 : (view.rates[a.currency] ?? null);
+  if (t.usd == null || !perUnit) return null;
+  return (sign * t.usd) / perUnit;
+}
+
+// Adds (dir 1) or takes back (dir -1) a record's effect on its account, if it came after the
+// last balance check
+function trackTx(view: View, t: Tx, dir: 1 | -1) {
+  const a = accountOf(view.accounts, t.account);
+  if (!a || t.date <= checkedAt(a)) return;
+  const d = txDelta(t, a, view);
+  if (d == null || !d) return;
+  const i = view.accounts.indexOf(a);
+  const balance = Math.round((a.balance + dir * d) * 100) / 100;
+  const rate = view.rates[a.currency];
+  const perUnit =
+    a.balance !== 0 && a.usd != null
+      ? a.usd / a.balance
+      : rate != null
+        ? rate * (a.type === 'You owe' ? -1 : 1)
+        : null;
+  view.accounts[i] = {
+    ...a,
+    balance,
+    usd: perUnit == null ? a.usd : Math.round(balance * perUnit * 100) / 100,
+  };
+}
+
 // Server data plus everything still waiting in the outbox, so the UI shows edits instantly
 export function buildView(server: ServerData | null, outbox: Op[]): View | null {
   if (!server) return null;
@@ -158,6 +213,9 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
     today: localToday(),
   };
 
+  // the sheet keeps each balance as last entered; records since then move it
+  for (const t of view.tx) trackTx(view, t, 1);
+
   for (const op of outbox) {
     const failed = op.error;
     switch (op.action) {
@@ -165,20 +223,30 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
         if (view.tx.some((t) => t.id === op.tx.id)) break;
         const t = txFromInput(op.tx, view, usdRate(op.tx.currency, view.tx, view.accounts));
         view.tx.push({ ...t, failed });
+        if (!failed) trackTx(view, t, 1);
         break;
       }
       case 'update': {
         const i = view.tx.findIndex((t) => t.id === op.id);
         if (i >= 0) {
           const t = txFromInput(op.tx, view, usdRate(op.tx.currency, view.tx, view.accounts));
-          view.tx[i] = { ...t, id: op.id, source: view.tx[i].source, failed };
+          const next = { ...t, id: op.id, source: view.tx[i].source, failed };
+          if (!failed) {
+            trackTx(view, view.tx[i], -1);
+            trackTx(view, next, 1);
+          }
+          view.tx[i] = next;
         }
         break;
       }
-      case 'delete':
+      case 'delete': {
         // a delete the sheet refused leaves the record where it is
-        if (!failed) view.tx = view.tx.filter((t) => t.id !== op.id);
+        if (failed) break;
+        const old = view.tx.find((t) => t.id === op.id);
+        if (old) trackTx(view, old, -1);
+        view.tx = view.tx.filter((t) => t.id !== op.id);
         break;
+      }
       case 'transfer': {
         if (view.transfers.some((t) => t.id === op.tr.id)) break;
         const t = { ...transferFromInput(op.tr), failed };
@@ -298,7 +366,7 @@ export function buildView(server: ServerData | null, outbox: Op[]): View | null 
             balance,
             usd: rate == null ? a.usd : Math.round(balance * rate * 100) / 100,
             updated: view.today,
-            checked: view.today,
+            checked: stamp(op.createdAt),
           };
         }
         break;
