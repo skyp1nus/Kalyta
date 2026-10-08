@@ -216,6 +216,34 @@ export function startPrivacyWatch() {
 
   window.addEventListener('blur', cover);
   window.addEventListener('pagehide', cover);
+
+  // A Home Screen app gets no event before iOS takes the app switcher snapshot. But the swipe up
+  // from the home indicator starts as a touch on the page that iOS cancels once it sees the
+  // gesture, while the page is still drawn. Cover then; if the swipe was let go, uncover.
+  let edgeTouch = false;
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      const t = e.touches[0];
+      edgeTouch = !!t && t.clientY > window.innerHeight - 70;
+    },
+    { capture: true, passive: true },
+  );
+  document.addEventListener(
+    'touchcancel',
+    () => {
+      if (!edgeTouch) return;
+      edgeTouch = false;
+      cover();
+      const check = () => {
+        if (document.visibilityState !== 'visible') return;
+        if (document.hasFocus()) uncover();
+        else coverTimer = setTimeout(check, 400);
+      };
+      coverTimer = setTimeout(check, 900);
+    },
+    { capture: true, passive: true },
+  );
   window.addEventListener('focus', () => {
     if (document.visibilityState === 'visible') uncover();
   });
