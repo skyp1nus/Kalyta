@@ -84,7 +84,6 @@ export function BalanceSheet({ view, name }: { view: View; name: string }) {
             value={val}
             onChange={setVal}
             placeholder={placeholder}
-            charWidth={33}
             className="amount-input balance"
             label="New balance"
           />

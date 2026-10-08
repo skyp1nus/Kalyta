@@ -1643,16 +1643,39 @@ button.row:active,
 }
 
 .amount-input {
-  max-width: 230px;
-  font-size: 64px;
+  font-size: calc(64px * var(--k, 1));
   font-weight: 700;
   letter-spacing: -2px;
+}
+
+/* an invisible copy of the text gives the box its width; the input lies on top of it */
+.amount-box {
+  position: relative;
+  display: inline-block;
+  max-width: 280px;
+  transition: font-size 0.18s var(--ease);
+  min-width: 0;
+}
+
+.amount-box .amount-mirror {
+  display: block;
+  visibility: hidden;
+  white-space: pre;
+  overflow: hidden;
+  padding-right: 8px; /* room for the caret */
+}
+
+.amount-box input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  font: inherit;
+  letter-spacing: inherit;
   text-align: right;
-  transition: width 0.15s;
 }
 
 .amount-input.balance {
-  font-size: 56px;
+  font-size: calc(56px * var(--k, 1));
   letter-spacing: -1.6px;
 }
 

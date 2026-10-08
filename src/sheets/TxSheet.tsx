@@ -228,7 +228,7 @@ export function TxSheet({
 
       <div className="amount-card">
         <div className="amount-line">
-          <AmountInput value={amount} onChange={setAmount} charWidth={37} label="Amount" />
+          <AmountInput value={amount} onChange={setAmount} label="Amount" />
           <button
             type="button"
             className={`cur-btn ${picker === 'cur' ? 'open' : ''}`}

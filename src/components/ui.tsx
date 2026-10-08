@@ -267,7 +267,6 @@ export function AmountInput({
   value,
   onChange,
   placeholder = '0',
-  charWidth,
   className = 'amount-input',
   label,
   autoFocus,
@@ -275,7 +274,6 @@ export function AmountInput({
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  charWidth: number;
   className?: string;
   label: string;
   autoFocus?: boolean;
@@ -284,20 +282,29 @@ export function AmountInput({
   useLayoutEffect(() => {
     if (autoFocus) ref.current?.focus({ preventScroll: true });
   }, [autoFocus]);
-  const len = Math.max(1, (value || placeholder).length);
+  // The box is exactly as wide as the text: an invisible copy of it sits in the same grid cell.
+  // Guessing the width per character and animating it made the digits jump while typing.
   return (
-    <input
-      ref={ref}
-      className={className}
-      value={value}
-      inputMode="decimal"
-      autoComplete="off"
-      enterKeyHint="done"
-      aria-label={label}
-      placeholder={placeholder}
-      style={{ width: len * charWidth + 6 }}
-      onChange={(e) => onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
-    />
+    // long numbers shrink a little instead of running out of room
+    <span
+      className={`amount-box ${className}`}
+      style={{ '--k': Math.min(1, 6 / Math.max(1, (value || placeholder).length)) } as CSSProperties}
+    >
+      <span className="amount-mirror" aria-hidden="true">
+        {value || placeholder}
+      </span>
+      <input
+        ref={ref}
+        className={className}
+        value={value}
+        inputMode="decimal"
+        autoComplete="off"
+        enterKeyHint="done"
+        aria-label={label}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
+      />
+    </span>
   );
 }
 
