@@ -1139,7 +1139,8 @@ function buildOverview(ss) {
 
   // Net worth
   sh.getRange('B5').setValue('Net worth').setFontColor(THEME.muted).setFontSize(10);
-  sh.getRange('B6').setFormula('=SUM(' + AC + 'F2:F)');
+  // only your own money: debts (people's rows) are left out
+  sh.getRange('B6').setFormula('=SUMIFS(' + AC + 'F2:F, ' + AC + 'B2:B, "Account")');
   sh.getRange('B6:D6').merge().setFontSize(28).setFontWeight('bold').setNumberFormat(MONEY).setHorizontalAlignment('left');
   sh.getRange('B7').setFormula('=COUNTA(' + AC + 'A2:A)&" accounts · in USD · update balances on the Accounts tab or with the shortcut"')
     .setFontColor(THEME.muted).setFontSize(10);
@@ -1589,7 +1590,7 @@ function signed(v){ return (v>=0?'+':'\\u2212')+money(Math.abs(v)); }
 function renderOverview(){
   var ym=D.today.slice(0,7), day=+D.today.slice(8,10), dim=daysIn(ym), prev=shiftYm(ym,-1);
   var accs=D.accounts.slice().sort(function(a,b){return (b.usd||0)-(a.usd||0);});
-  var net=accs.reduce(function(s,a){return s+(typeof a.usd==='number'?a.usd:0);},0);
+  var net=accs.reduce(function(s,a){return s+(a.type==='Account'&&typeof a.usd==='number'?a.usd:0);},0);
   var pos=accs.reduce(function(s,a){return s+(a.usd>0?a.usd:0);},0);
   var h='<div style="margin-top:22px"><p class="tl">Net worth</p><p class="hero">'+money(net)+'</p><p class="ts">'+accs.length+' accounts \\u00b7 in USD</p>';
   h+='<div class="stack">'+accs.map(function(a,i){ return a.usd>0?'<div title="'+esc(a.name)+'" style="width:'+(a.usd/pos*100).toFixed(2)+'%;background:'+ACC_COLORS[i%8]+'"></div>':''; }).join('')+'</div></div>';

@@ -1,9 +1,9 @@
 import { memo } from 'react';
 import { usePinnedGlow } from '../components/hooks';
 import { Avatar, BackButton, CircleButton, EmptyState, Icon } from '../components/ui';
-import { accountGroup, accountLook, GROUPS, isDebt } from '../lib/meta';
+import { accountGroup, accountLook, GROUPS, isDebt, isPerson } from '../lib/meta';
 import { useMoney } from '../lib/money';
-import { netWorth } from '../lib/stats';
+import { debtTotals, netWorth } from '../lib/stats';
 import type { View } from '../lib/types';
 import { useNav } from '../nav';
 
@@ -12,9 +12,8 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
   const glow = usePinnedGlow();
   const money = useMoney(view);
   const nw = netWorth(view);
-  const debts = -view.accounts.filter(isDebt).reduce((s, a) => s + (a.usd ?? 0), 0);
-  const assets = nw + debts;
-  const alloc = view.accounts.filter((a) => !isDebt(a) && (a.usd ?? 0) > 0);
+  const { lent, owe } = debtTotals(view);
+  const alloc = view.accounts.filter((a) => !isPerson(a.type) && (a.usd ?? 0) > 0);
 
   return (
     <>
@@ -46,8 +45,9 @@ export const Accounts = memo(function Accounts({ view }: { view: View }) {
                 marginTop: 8,
               }}
             >
-              <span>Assets {money.B(assets)}</span>
-              {debts > 0 && <span>You owe {money.B(debts)}</span>}
+              {/* debts are not part of net worth */}
+              <span>{lent > 0 ? `Owed to you ${money.B(lent)}` : ''}</span>
+              {owe > 0 && <span>You owe {money.B(owe)}</span>}
             </div>
           </div>
 

@@ -100,9 +100,7 @@ export function AccountSheet({ view, type: startType }: { view: View; type?: Acc
           {dup
             ? `You already have “${n}”`
             : person
-              ? type === 'You owe'
-                ? 'Counts against your net worth'
-                : 'Counts as money that comes back to you'
+              ? 'Not counted in your net worth'
               : currency !== money.base && okNum && num
                 ? `≈ ${money.B(money.toUsd(num, currency) ?? 0)}`
                 : ''}

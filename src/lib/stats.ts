@@ -1,5 +1,5 @@
 import { MONTHS, SHORT_MONTHS } from './format';
-import { isIncomeCat } from './meta';
+import { isIncomeCat, isPerson } from './meta';
 import type { Tx, View } from './types';
 
 export function shiftYm(ym: string, k: number): string {
@@ -75,8 +75,20 @@ export function groupBy(rows: Tx[], keyOf: (t: Tx) => string): Group[] {
   return [...map.values()].sort((a, b) => b.value - a.value);
 }
 
+// Only your own money: what people owe you and what you owe them are shown apart
 export function netWorth(view: View): number {
-  return view.accounts.reduce((s, a) => s + (a.usd ?? 0), 0);
+  return view.accounts.reduce((s, a) => s + (isPerson(a.type) ? 0 : (a.usd ?? 0)), 0);
+}
+
+// USD totals of the money people owe you (lent) and that you owe (owe, positive)
+export function debtTotals(view: View): { lent: number; owe: number } {
+  let lent = 0;
+  let owe = 0;
+  for (const a of view.accounts) {
+    if (a.type === 'Owed to you') lent += a.usd ?? 0;
+    else if (a.type === 'You owe') owe -= a.usd ?? 0;
+  }
+  return { lent, owe };
 }
 
 export function categoryColor(view: View, category: string): string {

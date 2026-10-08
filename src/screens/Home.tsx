@@ -5,10 +5,10 @@ import { EntryRow } from '../components/rows';
 import { Avatar, CircleButton, Icon, SectionHead, Skeleton } from '../components/ui';
 import { allEntries } from '../lib/entries';
 import { MONTHS, SHORT_MONTHS, shortDate } from '../lib/format';
-import { isDebt } from '../lib/meta';
+import { isDebt, isPerson } from '../lib/meta';
 import { type Money, useMoney } from '../lib/money';
 import { type Block, usePrefs } from '../lib/prefs';
-import { comparison, monthSummary, netWorth, shiftYm, weekSpending } from '../lib/stats';
+import { comparison, debtTotals, monthSummary, netWorth, shiftYm, weekSpending } from '../lib/stats';
 import { useStore } from '../lib/store';
 import { plural, type SyncInfo, syncInfo } from '../lib/syncState';
 import type { Account, View } from '../lib/types';
@@ -83,18 +83,21 @@ function HeroPager({ view, money }: { view: View; money: Money }) {
   const m = monthSummary(view, ym);
   const cmp = comparison(view, m);
   const nw = netWorth(view);
-  const debts = -view.accounts.filter(isDebt).reduce((s, a) => s + (a.usd ?? 0), 0);
-  const assets = nw + debts;
+  const { lent, owe } = debtTotals(view);
+  const own = view.accounts.filter((a) => !isPerson(a.type)).length;
   const dq = cmp.base && m.spent ? Math.round((m.spent / cmp.base - 1) * 100) : null;
   const month = MONTHS[Number(ym.slice(5, 7)) - 1];
   const pages = [
     {
       value: money.B(nw, nw < 0 ? '−' : ''),
       label: 'Net worth',
+      // debts are left out of net worth and only shown beside it
       sub:
-        debts > 0
-          ? `Assets ${money.B(assets)} · You owe ${money.B(debts)}`
-          : plural(view.accounts.length, 'account'),
+        lent > 0 || owe > 0
+          ? [lent > 0 && `Owed to you ${money.B(lent)}`, owe > 0 && `You owe ${money.B(owe)}`]
+              .filter(Boolean)
+              .join(' · ')
+          : plural(own, 'account'),
       go: () => nav.push({ name: 'accounts' }),
     },
     {

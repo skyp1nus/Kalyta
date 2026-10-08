@@ -3,7 +3,7 @@ import { fmt } from '../src/lib/format';
 import { accountDomain, logoUrls } from '../src/lib/meta';
 import { buildView } from '../src/lib/outbox';
 import { kwOf, norm, ruleFor } from '../src/lib/rules';
-import { monthSummary } from '../src/lib/stats';
+import { debtTotals, monthSummary, netWorth } from '../src/lib/stats';
 import {
   addCadence,
   budgetState,
@@ -388,5 +388,23 @@ describe('a record in the same minute as the balance check', () => {
       [],
     );
     expect(v?.accounts[0].balance).toBe(6482.1);
+  });
+});
+
+describe('net worth', () => {
+  it('leaves debts out', () => {
+    const acc = (name: string, type: string, usd: number) => ({
+      name,
+      type,
+      currency: 'USD',
+      balance: Math.abs(usd),
+      updated: '',
+      usd,
+    });
+    const view = {
+      accounts: [acc('Wise', 'Account', 600), acc('Alex', 'Owed to you', 200), acc('Bob', 'You owe', -50)],
+    } as unknown as View;
+    expect(netWorth(view)).toBe(600);
+    expect(debtTotals(view)).toEqual({ lent: 200, owe: 50 });
   });
 });
