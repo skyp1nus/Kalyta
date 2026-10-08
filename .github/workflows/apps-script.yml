@@ -5,7 +5,7 @@ name: Deploy Apps Script
 # Needs three repository secrets: CLASPRC_JSON, SCRIPT_ID, DEPLOYMENT_ID (see README).
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths: ['apps-script/**']
   workflow_dispatch:
 

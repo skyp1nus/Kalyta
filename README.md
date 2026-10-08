@@ -80,7 +80,7 @@ npm run lint       # Biome
 npm run build      # production build into dist/
 ```
 
-Pushing to `master` builds and deploys to GitHub Pages (Settings → Pages → Source: GitHub Actions).
+Pushing to `main` builds and deploys to GitHub Pages (Settings → Pages → Source: GitHub Actions).
 
 ## Bank logos
 
