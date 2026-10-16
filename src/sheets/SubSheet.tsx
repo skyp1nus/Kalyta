@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Icon, Segmented } from '../components/ui';
-import { parseAmount } from '../lib/format';
+import { nowLocal, parseAmount } from '../lib/format';
 import { CURRENCIES, categoryMeta, isDebt } from '../lib/meta';
 import { useMoney } from '../lib/money';
 import { newId } from '../lib/outbox';
-import { discardOp, enqueue, useStore } from '../lib/store';
+import { discardOp, enqueue } from '../lib/store';
 import {
   addCadence,
   CADENCE_LABEL,
@@ -16,7 +16,6 @@ import {
   nextOnOrAfter,
   priceChange,
 } from '../lib/subs';
-import { syncInfo } from '../lib/syncState';
 import type { Cadence, Subscription, View } from '../lib/types';
 import { useNav } from '../nav';
 import { CategoryChips, CloseButton, Notice, SaveButton, SheetHead } from './common';
@@ -32,7 +31,6 @@ export function SubSheet({
 }) {
   const nav = useNav();
   const money = useMoney(view);
-  const info = syncInfo(useStore());
   const own = view.accounts.filter((a) => !isDebt(a));
   const firstAcc = own[0];
   const [name, setName] = useState(edit?.name ?? '');
@@ -68,6 +66,37 @@ export function SubSheet({
     const { pending: _p, ...rest } = { ...s, ...patch };
     enqueue({ action: 'subscription', sub: rest });
   };
+
+  // Records this charge and moves the subscription to its next date. Held for a moment so it can be undone.
+  function markPaid(date: string) {
+    if (!edit) return;
+    const hold = 4500;
+    const ops = [
+      enqueue(
+        {
+          action: 'add',
+          tx: {
+            id: newId(),
+            kind: 'expense',
+            date,
+            amount: String(edit.amount),
+            currency: edit.currency,
+            merchant: edit.name,
+            account: edit.account,
+            category: edit.category,
+            note: '',
+          },
+        },
+        hold,
+      ),
+    ];
+    const { pending: _p, ...rest } = { ...edit, next: addCadence(next, edit.cadence) };
+    ops.push(enqueue({ action: 'subscription', sub: rest }, hold));
+    nav.close();
+    nav.toast(`${edit.name} paid · next ${dShort(rest.next)}`, () => {
+      for (const id of ops) discardOp(id);
+    });
+  }
 
   function save() {
     if (!valid) return;
@@ -124,31 +153,7 @@ export function SubSheet({
         text={`${edit.name} usually charges ${edit.account} around this date. No matching record has appeared yet.`}
       >
         <div style={{ display: 'flex', gap: 8, margin: '14px 0 0 36px' }}>
-          <button
-            type="button"
-            className="small-btn inv"
-            onClick={() => {
-              enqueue({
-                action: 'add',
-                tx: {
-                  id: newId(),
-                  kind: 'expense',
-                  date: `${next}T09:00`,
-                  amount: String(edit.amount),
-                  currency: edit.currency,
-                  merchant: edit.name,
-                  account: edit.account,
-                  category: edit.category,
-                  note: '',
-                },
-              });
-              write({ next: addCadence(next, edit.cadence) });
-              nav.close();
-              nav.toast(
-                info.mode === 'offline' ? 'Saved on iPhone · will sync later' : 'Saved to Google Sheet',
-              );
-            }}
-          >
+          <button type="button" className="small-btn inv" onClick={() => markPaid(`${next}T09:00`)}>
             Mark as paid
           </button>
           <button
@@ -308,6 +313,21 @@ export function SubSheet({
       {edit && (
         <>
           <div className="group" style={{ margin: '16px 20px 0' }}>
+            {!edit.paused && !overdue && (
+              <>
+                <button
+                  type="button"
+                  className="set-row tap"
+                  style={{ color: 'var(--green)' }}
+                  onClick={() => markPaid(nowLocal())}
+                >
+                  <Icon name="check_circle" />
+                  <span className="lbl">Mark as paid</span>
+                  <span className="value">{dShort(next)}</span>
+                </button>
+                <div className="sep" style={{ marginLeft: 56 }} />
+              </>
+            )}
             <button
               type="button"
               className="set-row tap"
